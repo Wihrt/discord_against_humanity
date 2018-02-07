@@ -15,7 +15,7 @@ from .cards import BlackCard
 class Game(MongoDocument):
     """Data class for Game Mongo document"""
 
-    _DATABASE = "cards_against_humanity"
+    _DATABASE = "discord_against_humanity"
     _COLLECTION = "games"
 
     # Init
@@ -24,8 +24,7 @@ class Game(MongoDocument):
         super(Game, self).__init__(mongo_client)
         self._bot = discord_bot
         self._set_default_values()
-        if guild:
-            self._get(guild.id)
+        self._get(guild.id)
 
     # Properties
     # ---------------------------------------------------------------------------------------------
@@ -306,7 +305,7 @@ class Game(MongoDocument):
 
     def set_random_tsar(self):
         """Set the tsar in the beginning of the game"""
-        self._document["tsar"] = sample(self.players_id, 1)[0]
+        self._document["tsar"] = sample(self.players_id, 1)[0]  # Sample returns a list
 
     async def score(self):
         """Displays the score on the board"""
@@ -337,7 +336,7 @@ class Game(MongoDocument):
         """Create proposals with players answers"""
         results = list()
         for player in self.players:
-            if player.document_id != self.tsar.document_id:
+            if player.document_id != self.tsar.document_id:  # Tsar can't vote
                 answers = list()
                 for answer in player.answers:
                     self._document["white_cards"].append(answer.document_id)

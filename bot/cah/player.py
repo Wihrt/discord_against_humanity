@@ -12,7 +12,7 @@ from .cards import WhiteCard
 class Player(MongoDocument):
     """Data class for Player Mongo document"""
 
-    _DATABASE = "cards_against_humanity"
+    _DATABASE = "discord_against_humanity"
     _COLLECTION = "players"
     _WHITE_CARDS_NUMBER = 7
 

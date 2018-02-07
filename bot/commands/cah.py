@@ -22,6 +22,13 @@ class CardsAgainstHumanity(object):
     # -------------------------------------------------------------------------
     @commands.command()
     @commands.guild_only()
+    async def reminder(self, ctx):
+        """Displays the reminder"""
+        message = self._reminder()
+        await ctx.channel.send(embed=message)
+
+    @commands.command()
+    @commands.guild_only()
     @commands.check(no_game_exists)
     async def create(self, ctx):
         """Create a new game of Cards Against Humanity"""
@@ -62,7 +69,9 @@ class CardsAgainstHumanity(object):
         player.save()
         game.add_player(player)
         game.save()
-        await game.board.send("{} has joined the game".format(ctx.author.mention))
+        embed = dict(description="{} has joined the game".format(ctx.author.mention))
+        message = create_embed(embed)
+        await game.board.send(embed=message)
 
     @commands.command()
     @commands.guild_only()
@@ -79,7 +88,9 @@ class CardsAgainstHumanity(object):
         game.save()
         await player.channel.delete()
         player.delete()
-        await game.board.send("{} has leaved the game".format(ctx.author.mention))
+        embed = dict(description="{} has leaved the game".format(ctx.author.mention))
+        message = create_embed(embed)
+        await game.board.send(embed=message)
 
     @commands.command()
     @commands.guild_only()
@@ -93,6 +104,8 @@ class CardsAgainstHumanity(object):
         game.playing = True
         game.points = points
         game.save()
+        message = self._reminder()
+        await game.board.send(embed=message)
         self.bot.loop.create_task(self.run(game))
 
     @commands.command()
@@ -118,14 +131,23 @@ class CardsAgainstHumanity(object):
         try:
             answers = list(map(int, answers))
             if len(answers) is not game.black_card.pick:
-                pass  # Send error
+                embed = dict(description="You must provide {} answers. \
+You provided {} answers".format(game.black_card.pick, len(answers)))
+                message = create_embed(embed)
+                await game.board.send(embed=message)
             elif not all(i in range(1, 8) for i in answers):
-                pass  # Send error
+                embed = dict(description="Your answer are not between 1 and 7")
+                message = create_embed(embed)
+                await game.board.send(embed=message)
             else:
                 player.add_answers(answers)
-                await game.board.send("{} has voted !".format(ctx.author.mention))
+                embed = dict(description="{} has voted !".format(ctx.author.mention))
+                message = create_embed(embed)
+                await game.board.send(embed=message)
         except TypeError:
-            pass  # Send error
+            embed = dict(description="Your answer not an integer !")
+            message = create_embed(embed)
+            await game.board.send(embed=message)
 
     @commands.command()
     @commands.guild_only()
@@ -139,15 +161,21 @@ class CardsAgainstHumanity(object):
         game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
         player = Player(ctx.bot, ctx.bot.mongo, user=ctx.author)
         try:
-            answers = answers.split(" ")[0]
+            answers = int(answers.split(" ")[0])
             if not answers in range(1, len(game.players_id)):
-               pass  # Send error
+               embed = dict(description="Your answer is not in the acceptable range")
+               message = create_embed(embed)
+               await game.board.send(embed=message)
             else:
                 player.tsar_choice = answers
                 player.save()
-                await game.board.send("{} has voted !".format(ctx.author.mention))
-        except:
-            pass
+                embed = dict(description="{} has voted !".format(ctx.author.mention))
+                message = create_embed(embed)
+                await game.board.send(embed=message)
+        except ValueError:
+            embed = dict(description="Your answer is not an integer !")
+            message = create_embed(embed)
+            await game.board.send(embed=message)
 
     @commands.command()
     @commands.guild_only()
@@ -156,6 +184,16 @@ class CardsAgainstHumanity(object):
     async def score(self, ctx):
         game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
         await game.score()
+
+    async def _reminder(self):
+        embed = dict(name="Rules", inline=False, value="Course of the game :\n\
+1. A black card (question) is picked\n\
+2. Players pick white cards (answers)\n\
+3. Players vote  `Use {command_prefix}vote in your channel`\n\
+4. Tsar vote  `Use {command_prefix}vote in your channel`\n\
+5. Deciding winner and go back to start".format(self.bot.command_prefix))
+        message = create_embed(embed)
+        return message
 
     async def run(self, game):
         """Run the game"""
@@ -170,8 +208,8 @@ class CardsAgainstHumanity(object):
             await game.wait_for_players_answers()  # Wait for players to wote
             game.create_answers()
             await game.send_answers()  # Send all answers to the board
-            await game.wait_for_tsar_vote()
-            await game.choose_winner()
+            await game.wait_for_tsar_vote()  # Wait for tsar to vote
+            await game.choose_winner()  # Choose the winner
             await game.score()
         game.playing = False
         game.save()
