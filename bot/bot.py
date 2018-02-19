@@ -95,7 +95,7 @@ Use `{}help` to get commands".format(ctx.prefix)
         critical('{0.__class__.__name__}: {0}'.format(error.original))
     content["fields"] = field
     message = create_embed(content)
-    await ctx.channel.send(embed=message)
+    await ctx.author.send(embed=message)
 
 
 if __name__ == '__main__':

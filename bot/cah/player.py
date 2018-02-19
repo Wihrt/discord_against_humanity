@@ -12,7 +12,7 @@ from .cards import WhiteCard
 class Player(MongoDocument):
     """Data class for Player Mongo document"""
 
-    _DATABASE = "discord_against_humanity"
+    _DATABASE = "cards_against_humanity"
     _COLLECTION = "players"
     _WHITE_CARDS_NUMBER = 7
 
@@ -185,7 +185,7 @@ class Player(MongoDocument):
 
     # Public Methods
     # ---------------------------------------------------------------------------------------------
-    def draw_white_cards(self, used_cards):
+    async def draw_white_cards(self, used_cards):
         """Draw white cards and sent them to the player
 
         Arguments:
@@ -198,15 +198,14 @@ class Player(MongoDocument):
             for document in results:
                 if document["_id"] not in used_cards:
                     self._document["white_cards"].append(document["_id"])
-        self.save()
 
-    async def send_white_cards(self):
-        """Send White cards to the player's channel"""
         fields = list()
         for index, card in enumerate(self.white_cards):
             fields.append(dict(name=(index + 1), value=card.text, inline=False))
         message = create_embed(dict(title="Answers", fields=fields))
         await self.channel.send(embed=message)
+
+        self.save()
 
     def add_answers(self, answers):
         """Store answers given by the player
@@ -225,4 +224,9 @@ class Player(MongoDocument):
     def clear_answers(self):
         """Clear answer for the player"""
         self._document["answers"] = list()
+        self.save()
+
+    def clear_tsar_choice(self):
+        """Clear tsar choice for the player"""
+        self._document["tsar_choice"] = 0
         self.save()

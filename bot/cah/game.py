@@ -2,6 +2,7 @@
 
 """Card Against Humanity's game class"""
 
+from logging import info
 from asyncio import sleep
 from random import sample, shuffle
 from discord import CategoryChannel, Guild, TextChannel
@@ -15,7 +16,7 @@ from .cards import BlackCard
 class Game(MongoDocument):
     """Data class for Game Mongo document"""
 
-    _DATABASE = "discord_against_humanity"
+    _DATABASE = "cards_against_humanity"
     _COLLECTION = "games"
 
     # Init
@@ -209,7 +210,8 @@ class Game(MongoDocument):
             raise TypeError("Wrong type for value : %s" % type(value))
         elif not value in ["players", "tsar", "nobody"]:
             raise ValueError("Wrong value for voting")
-        self._document["voting_players"] = value
+        else:
+            self._document["voting"] = value
 
     @property
     def black_card(self):
@@ -315,7 +317,7 @@ class Game(MongoDocument):
         message = create_embed(dict(title="Cards Against Humanity", fields=fields))
         await self.board.send(embed=message)
 
-    def draw_black_card(self):
+    async def draw_black_card(self):
         """Draw a new black card"""
         query = [{"$sample": {"size": 1}}]
         card_number = len(self._document["black_cards"])
@@ -324,15 +326,13 @@ class Game(MongoDocument):
             for document in results:
                 if document["_id"] not in self._document["black_cards"]:
                     self._document["black_cards"].append(document["_id"])
-        self.save()
 
-    async def send_black_card(self):
-        """Send black card to the board"""
         message = create_embed(dict(title="Question - Pick {}".format(self.black_card.pick),
                                     description=self.black_card.text))
         await self.board.send(embed=message)
+        self.save()
 
-    def create_answers(self):
+    async def send_answers(self):
         """Create proposals with players answers"""
         results = list()
         for player in self.players:
@@ -347,16 +347,13 @@ class Game(MongoDocument):
 
         shuffle(results)
         self._document["results"] = results
-        self.save()
-
-    async def send_answers(self):
-        """Send answers to the board"""
         proposals = str()
         for index, value in enumerate(self._document["results"]):
             proposals += "{}. {}\n".format(index + 1, value[1])
         embed = create_embed(
             dict(fields=dict(name="Proposals", value=proposals.rstrip(), inline=False)))
         await self.board.send(embed=embed)
+        self.save()
 
     def get_players_answers(self):
         count = 0
@@ -386,33 +383,24 @@ description="Vote in your private channel by using `{}vote`".format(self._bot.co
         self.save()
 
     async def wait_for_tsar_vote(self):
-        """Wait for tsar to cast his vote
-
-        Returns:
-            str -- Tsar's choice
-        """
+        """Wait for tsar to cast his vote"""
         self.voting = "tsar"
         self.save()
 
-        while not self.tsar.answers:
+        while not self.tsar.tsar_choice:
             await sleep(5)
 
         self.voting = "nobody"
         self.save()
 
     async def choose_winner(self):
-        """Choose the winner and change tsar
-
-        Arguments:
-            choice {int} -- Tsar's choice
-        """
+        """Choose the winner and change tsar"""
         tsar_choice = self.tsar.tsar_choice
-        player_id = self._document["results"][tsar_choice][0]
+        self.tsar.clear_tsar_choice()
+        player_id = self._document["results"][tsar_choice - 1][0]
         player = Player(self._bot, self._client, document_id=player_id)
         player.score += 1
-        self.tsar.tsar_choice = 0
-        self._document["tsar"] = player_id
         player.save()
-        self.tsar.save()
+        self._document["tsar"] = player_id
         self.save()
         await self.board.send("{} have won this round !".format(player.user.mention))
