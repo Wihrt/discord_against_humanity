@@ -2,29 +2,25 @@
 
 """Card Against Humanity's player class"""
 
+from logging import getLogger
+
 from discord import Guild, Member, TextChannel
 
 from utils.embed import create_embed
 from utils.mongodoc import MongoDocument
-from .cards import WhiteCard
+from .cards import MongoWhiteCard
 
+LOGGER = getLogger(__name__)
 
-class Player(MongoDocument):
-    """Data class for Player Mongo document"""
+class MongoPlayer(MongoDocument):
+    """Class for Player Mongo Document"""
 
     _DATABASE = "cards_against_humanity"
     _COLLECTION = "players"
     _WHITE_CARDS_NUMBER = 7
 
-    def __init__(self, discord_bot, mongo_client, document_id=None, user=None):
-        super(Player, self).__init__(mongo_client)
-        self._bot = discord_bot
-        self._set_default_values()
-        if document_id:
-            self.get(document_id)
-        if user:
-            self._get(user)
-
+    # Properties
+    # ---------------------------------------------------------------------------------------------
     @property
     def guild(self):
         """Get the Guild
@@ -130,30 +126,6 @@ class Player(MongoDocument):
         self._document["score"] = value
 
     @property
-    def white_cards(self):
-        """Get white cards
-
-        Returns:
-            *WhiteCard -- List of WhiteCard
-        """
-        try:
-            return [WhiteCard(self._client, _id) for _id in self._document["white_cards"]]
-        except KeyError:
-            return None
-
-    @property
-    def answers(self):
-        """Get the answers
-
-        Returns:
-            *WhiteCard -- List of WhiteCard
-        """
-        try:
-            return [WhiteCard(self._client, _id) for _id in self._document["answers"]]
-        except KeyError:
-            return None
-
-    @property
     def tsar_choice(self):
         try:
             return self._document["tsar_choice"]
@@ -166,11 +138,57 @@ class Player(MongoDocument):
             raise TypeError("Wrong type for value : %s" % type(value))
         self._document["tsar_choice"] = value
 
+    @property
+    def white_cards_id(self):
+        """Get white cards
+
+        Returns:
+            *MongoWhiteCard -- List of MongoWhiteCard
+        """
+        try:
+            return self._document["white_cards"]
+        except KeyError:
+            return None
+
+    @property
+    def answers_id(self):
+        """Get the answers
+
+        Returns:
+            *MongoWhiteCard -- List of MongoWhiteCard
+        """
+        try:
+            return self._document["answers"]
+        except KeyError:
+            return None
+
+    # Class methods
+    # ---------------------------------------------------------------------------------------------
+    @classmethod
+    async def create(cls, discord_bot, mongo_client, document_id=None, user=None):
+        self = MongoPlayer(mongo_client)
+        self._bot = discord_bot
+        self._set_default_values()
+        if document_id:
+            await self.get(document_id)
+        if user:
+            await self._get(user)
+        return self
 
     # Private methods
     # ---------------------------------------------------------------------------------------------
-    def _get(self, user):
-        document = self._collection.find_one(dict(user=user.id))
+    async def _get(self, user):
+        """Get the document by searching with the User Id
+
+        Arguments:
+            user {Member} -- User to search
+
+        Raises:
+            TypeError -- Wrong type for user
+        """
+        if not isinstance(user, Member):
+            raise TypeError("Wrong type for user")
+        document = await self._collection.find_one(dict(user=user.id))
         if document:
             self._document = document
 
@@ -183,50 +201,71 @@ class Player(MongoDocument):
         self._document["white_cards"] = list()
         self._document["tsar_choice"] = 0
 
-    # Public Methods
+    # Public methods
     # ---------------------------------------------------------------------------------------------
+    async def get_white_cards(self):
+        """Get the White Cards
+
+        Returns:
+            *MongoWhiteCard -- List of MongoWhiteCards
+        """
+        cards = list()
+        for card_id in self.white_cards_id:
+            card = await MongoWhiteCard.create(self._client, card_id)
+            cards.append(card)
+        return cards
+
     async def draw_white_cards(self, used_cards):
-        """Draw white cards and sent them to the player
+        """Draw white cards for the player
 
         Arguments:
-            used_cards {*ObjectId} -- List of white cards already used by all players
+            used_cards {*ObjectId} -- ObjectId of used cards
         """
-        # Get cards from MongoDB
         query = [{"$sample": {"size": 1}}]
-        while not len(self.white_cards) is self._WHITE_CARDS_NUMBER:
-            results = self._client[self._DATABASE]["white_cards"].aggregate(query)
-            for document in results:
+        while not len(self.white_cards_id) is self._WHITE_CARDS_NUMBER:
+            async for document in self._client[self._DATABASE]["white_cards"].aggregate(query):
                 if document["_id"] not in used_cards:
                     self._document["white_cards"].append(document["_id"])
+        await self.save()
 
-        fields = list()
-        for index, card in enumerate(self.white_cards):
-            fields.append(dict(name=(index + 1), value=card.text, inline=False))
-        message = create_embed(dict(title="Answers", fields=fields))
-        await self.channel.send(embed=message)
+        proposals = str()
+        white_cards = await self.get_white_cards()
+        for index, card in enumerate(white_cards):
+            proposals = "{}. {}\n".format(index, card.text)
+        embed = create_embed(dict(fields=dict(name="Answers", value=proposals.rstrip(),
+                                              inline=False)))
+        await self.channel.send(embed=embed)
 
-        self.save()
+    async def get_answers(self):
+        """Get the White Cards answers
 
-    def add_answers(self, answers):
+        Returns:
+            *MongoWhiteCard -- List of MongoWhiteCards
+        """
+        cards = list()
+        for card_id in self.answers_id:
+            card = await MongoWhiteCard.create(self._client, card_id)
+            cards.append(card)
+        return cards
+
+    async def add_answers(self, answers):
         """Store answers given by the player
 
         Arguments:
             answers {*int} -- List of choices [1-7]
         """
-        # Store answers in the same order
         for answer in answers:
-            self._document["answers"].append(self._document["white_cards"][answer - 1])
-        # Delete answer from player's white cards
+            self._document["answers"].append(self.white_cards_id[answer - 1])
         for answer in sorted(answers, reverse=True):
-            del self._document["white_cards"][answer - 1]
-        self.save()  # Save MongoDB document
+            del self.white_cards_id[answer - 1]
+        await self.save()
 
-    def clear_answers(self):
-        """Clear answer for the player"""
+    async def delete_answers(self):
+        """Delete answers for the player"""
         self._document["answers"] = list()
-        self.save()
+        await self.save()
 
-    def clear_tsar_choice(self):
-        """Clear tsar choice for the player"""
-        self._document["tsar_choice"] = 0
-        self.save()
+    async def delete_choice(self):
+        """Delete choice for the player"""
+        self.tsar_choice = 0
+        await self.save()

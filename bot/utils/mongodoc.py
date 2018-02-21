@@ -3,9 +3,9 @@
 from bson.objectid import ObjectId
 from pymongo.collection import ReturnDocument
 
+
 class MongoDocument(object):
     """Class for Document in MongoDB"""
-
 
     # Constants
     _DATABASE = None
@@ -44,29 +44,24 @@ class MongoDocument(object):
             raise TypeError
         self._document["_id"] = value
 
-    def get(self, document_id=None):
+    async def get(self, document_id=None):
         """Get the Mongo document"""
         search = {"_id": self.document_id}
         if document_id:
             search = {"_id": document_id}
-        self._document = self._collection.find_one(search)
+        self._document = await self._collection.find_one(search)
 
-    def refresh(self):
-        """Refresh the Mongo document by getting it again"""
-        if self.document_id:
-            self._document = self._collection.find_one({"_id": self.document_id})
-
-    def save(self):
+    async def save(self):
         """Saves Mongo document"""
         if not self.document_id:
-            result = self._collection.insert_one(self._document)
+            result = await self._collection.insert_one(self._document)
             self.document_id = result.inserted_id
         else:
-            self._document = self._collection.find_one_and_replace(
+            self._document = await self._collection.find_one_and_replace(
                 {"_id": self.document_id}, self._document)
-        self.refresh()
+        self._document = await self._collection.find_one({"_id": self.document_id})
 
-    def delete(self):
+    async def delete(self):
         """Deletes Mongo document"""
         if self.document_id:
-            self._collection.delete_one({"_id": self.document_id})
+            await self._collection.delete_one({"_id": self.document_id})

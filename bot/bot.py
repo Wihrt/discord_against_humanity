@@ -12,12 +12,13 @@ from discord import Color
 from discord.ext.commands import errors
 from discord.ext.commands.bot import Bot
 from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from utils.api import ApiKey
 from utils.embed import create_embed
 
 BOT = Bot(command_prefix="$", pm_help=False)  # Create the bot
-BOT.mongo = MongoClient(host="localhost", port=27017, connect=True)  # Add Mongo capabilities
+BOT.mongo = AsyncIOMotorClient(host="localhost", port=27017, connect=True)  # Add Mongo capabilities
 
 # Extensions to load at start
 EXTENSIONS = ["commands.cah"]
@@ -97,8 +98,7 @@ Use `{}help` to get commands".format(ctx.prefix)
     message = create_embed(content)
     await ctx.author.send(embed=message)
 
-
-if __name__ == '__main__':
+def main():
     init_logger(INFO)
     for extension in EXTENSIONS:
         try:
@@ -106,5 +106,9 @@ if __name__ == '__main__':
         except ImportError as err:
             exc = '{}: {}'.format(type(err).__name__, err)
             critical('Failed to load extension {}\n{}'.format(extension, exc))
-    TOKEN = ApiKey(BOT.mongo, "discord")
-    BOT.run(TOKEN.value)
+    with open("token.txt", "r") as token_file:
+        TOKEN = token_file.read()
+        BOT.run(TOKEN)
+
+if __name__ == '__main__':
+    main()

@@ -1,69 +1,87 @@
 #!/usr/bin/env python
 
 from logging import info
-from .game import Game
-from .player import Player
+from .game import MongoGame
+from .player import MongoPlayer
 
-def game_exists(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    if not game.document_id is None:
-        return True
-    return False
+async def game_exists(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    if game.document_id is not None:
+        result = True
+    return result
 
-def no_game_exists(ctx):
-    return not game_exists(ctx)
+async def no_game_exists(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    if game.document_id is None:
+        result = True
+    return result
 
-def is_player(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    player = Player(ctx.bot, ctx.bot.mongo, user=ctx.author)
+async def is_player(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
     if player.document_id in game.players_id:
-        return True
-    return False
+        result = True
+    return result
 
-def is_not_player(ctx):
-    return not is_player(ctx)
+async def is_not_player(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
+    if player.document_id not in game.players_id:
+        result = True
+    return result
 
-def game_playing(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
+async def game_playing(ctx):
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     return game.playing
 
-def game_not_playing(ctx):
-    return not game_playing(ctx)
+async def game_not_playing(ctx):
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    return not game.playing
 
-def is_enough_players(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    if len(game.players) >= 2:
-        return True
-    return False
+async def is_enough_players(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    if len(game.players_id) >= 2:
+        result = True
+    return result
 
-def from_user_channel(ctx):
-    player = Player(ctx.bot, ctx.bot.mongo, user=ctx.author)
-    info("Command channel = " + str(ctx.channel.id) + ", Player Channel = " + str(player.channel.id))
+async def from_user_channel(ctx):
+    result = False
+    player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
     if ctx.channel == player.channel:
-        return True
-    return False
+        result = True
+    return result
 
-def is_players_voting(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    info("State of the game : " + game.voting)
+async def is_players_voting(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.voting == "players":
-        return True
-    return False
+        result = True
+    return result
 
-def is_tsar_voting(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    info("State of the game : " + game.voting)
+async def is_tsar_voting(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.voting == "tsar":
-        return True
-    return False
+        result = True
+    return result
 
-def is_tsar(ctx):
-    game = Game(ctx.bot, ctx.bot.mongo, ctx.guild)
-    player = Player(ctx.bot, ctx.bot.mongo, user=ctx.author)
-    info("Tsar ID = " + str(game.tsar.document_id) + ", Player ID = " + str(player.document_id))
-    if game.tsar.document_id == player.document_id:
-        return True
-    return False
+async def is_tsar(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
+    if game.tsar_id == player.document_id:
+        result = True
+    return result
 
-def is_not_tsar(ctx):
-    return not is_tsar(ctx)
+async def is_not_tsar(ctx):
+    result = False
+    game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+    player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
+    if game.tsar_id != player.document_id:
+        result = True
+    return result

@@ -100,5 +100,6 @@ ENV/
 # mypy
 .mypy_cache/
 
+bot/token.txt
 mongo/*.json
 ext/*.json

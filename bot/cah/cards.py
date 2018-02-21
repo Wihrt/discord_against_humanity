@@ -5,18 +5,11 @@
 from html2text import html2text
 from utils.mongodoc import MongoDocument
 
-class BlackCard(MongoDocument):
+class MongoBlackCard(MongoDocument):
     """Data class for Black Card Mongo document"""
 
     _DATABASE = "cards_against_humanity"
     _COLLECTION = "black_cards"
-
-    # Init
-    # ---------------------------------------------------------------------------------------------
-    def __init__(self, mongo_client, document_id=None):
-        super(BlackCard, self).__init__(mongo_client)
-        if document_id:
-            self.get(document_id)
 
     # Properties
     # ---------------------------------------------------------------------------------------------
@@ -46,18 +39,20 @@ class BlackCard(MongoDocument):
         except KeyError:
             return None
 
-class WhiteCard(MongoDocument):
+    # Class methods
+    # ---------------------------------------------------------------------------------------------
+    @classmethod
+    async def create(cls, mongo_client, document_id=None):
+        self = MongoBlackCard(mongo_client)
+        if document_id:
+            await self.get(document_id)
+        return self
+
+class MongoWhiteCard(MongoDocument):
     """Data class for White Card mongo document"""
 
     _DATABASE = "cards_against_humanity"
     _COLLECTION = "white_cards"
-
-    # Init
-    # ---------------------------------------------------------------------------------------------
-    def __init__(self, mongo_client, document_id=None):
-        super(WhiteCard, self).__init__(mongo_client)
-        if document_id:
-            self.get(document_id)
 
     # Properties
     # ---------------------------------------------------------------------------------------------
@@ -69,6 +64,15 @@ class WhiteCard(MongoDocument):
             str -- Text of the card
         """
         try:
-            return self._document["text"]
+            return html2text(self._document["text"])
         except KeyError:
             return None
+
+    # Class methods
+    # ---------------------------------------------------------------------------------------------
+    @classmethod
+    async def create(cls, mongo_client, document_id=None):
+        self = MongoWhiteCard(mongo_client)
+        if document_id:
+            await self.get(document_id)
+        return self

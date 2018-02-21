@@ -1,4 +1,3 @@
 # Database;Collection;JSON File;JSON Array
-discord_against_humanity;api_keys;/docker-entrypoint-initdb.d/api_keys.json;false
 cards_against_humanity;black_cards;/docker-entrypoint-initdb.d/black_cards.json;true
 cards_against_humanity;white_cards;/docker-entrypoint-initdb.d/white_cards.json;true
