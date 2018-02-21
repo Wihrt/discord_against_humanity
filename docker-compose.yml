@@ -1,17 +1,17 @@
 version: '2'
 
 services:
-  # bot:
-  #   build: .
-  #   environment:
-  #     MONGO_HOST: "mongo"
-  #     MONGO_PORT: 27017
-  #   networks:
-  #     - internal
-  #   volumes:
-  #     - bot-log:/brisebois/log
-  #   depends_on:
-  #     - mongo
+  bot:
+    build: .
+    environment:
+      MONGO_HOST: "mongo"
+      MONGO_PORT: 27017
+    networks:
+      - internal
+    volumes:
+      - bot-log:/brisebois/log
+    depends_on:
+      - mongo
 
   mongo:
     image: mongo:3.6-jessie

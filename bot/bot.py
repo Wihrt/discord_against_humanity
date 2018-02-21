@@ -4,7 +4,7 @@
 
 # Imports
 from logging import getLogger, Formatter, FileHandler, StreamHandler, info, critical, INFO
-# from os import environ
+from os import environ
 from sys import stdout
 from traceback import print_tb
 
@@ -17,7 +17,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from utils.embed import create_embed
 
 BOT = Bot(command_prefix="$", pm_help=False)  # Create the bot
-BOT.mongo = AsyncIOMotorClient(host="localhost", port=27017, connect=True)  # Add Mongo capabilities
+BOT.mongo = AsyncIOMotorClient(host=environ["MONGO_HOST"], port=int(environ["MONGO_PORT"]),
+                               connect=True)
 
 # Extensions to load at start
 EXTENSIONS = ["commands.cah"]
