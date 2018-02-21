@@ -313,11 +313,10 @@ class MongoGame(MongoDocument):
         Returns:
             int -- Number of player who has voted
         """
-
         count = 0
         players = await self.get_players()
         for player in players:
-            if not player.document_id != self.tsar_id:
+            if player.document_id != self.tsar_id:
                 if player.answers_id:
                     count += 1
         return count
@@ -344,7 +343,12 @@ class MongoGame(MongoDocument):
         return not all(score < self.points for player, score in scores)
 
     async def score(self):
-        pass
+        scores = await self.get_players_score()
+        fields = list()
+        for player, score in scores:
+            fields.append(dict(name=player.user.display_name, value=score, inline=True))
+        message = create_embed(dict(title="Score", fields=fields))
+        await self.board.send(embed=message)
 
     async def get_black_card(self):
         """Get the last black card drawed
@@ -368,10 +372,10 @@ class MongoGame(MongoDocument):
         await self.save()
 
         # Send Black Card to the board
-        black_card = self.get_black_card()
+        black_card = await self.get_black_card()
         message = create_embed(dict(title="Question - Pick {}".format(black_card.pick),
                                     description=black_card.text))
-        await self.board.send(embed=message)
+        return message
 
     async def get_tsar(self):
         """Get the tsar player
@@ -403,10 +407,12 @@ class MongoGame(MongoDocument):
         # Combine Black Cards and MongoPlayer answers
         results = list()
         black_card = await self.get_black_card()
-        async for player in self.get_players():
+        players = await self.get_players()
+        for player in players:
             if player.document_id != self.tsar_id:
                 answers = list()
-                for answer in player.answers:
+                player_answers = await player.get_answers()
+                for answer in player_answers:
                     self._document["white_cards"].append(answer.document_id)
                     answers.append(answer.text)
                 result = black_card.text.format(*answers)
@@ -420,9 +426,9 @@ class MongoGame(MongoDocument):
         proposals = str()
         for index, value in enumerate(self._document["results"]):
             proposals += "{}. {}".format(index + 1, value[1])
-        embed = create_embed(dict(fields=dict(name="Proposals", value=proposals.rstrip(),
-                                              inline=False)))
-        await self.board.send(embed=embed)
+        message = create_embed(dict(fields=dict(name="Proposals", value=proposals.rstrip(),
+                                                inline=False)))
+        return message
 
     async def wait_for_players_answers(self):
         """Waiting for all players, except the tsar, to vote"""
@@ -446,7 +452,7 @@ Vote in your private channel by using `{}vote`".format(self._bot.command_prefix)
         await self.save()
 
         await self.board.send("Time for tsar to decide ! \
-Vote in your private channel by using `{}vote`".format(self._bot.command_prefix))
+Vote in your private channel by using `{}tsar`".format(self._bot.command_prefix))
 
         tsar_answer = await self.get_tsar_answer()
         while not tsar_answer:

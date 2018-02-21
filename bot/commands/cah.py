@@ -118,19 +118,24 @@ class CardsAgainstHumanity(object):
         await game.board.send(embed=self._reminder())
 
         await game.set_random_tsar()  # Set the Tsar
-        is_score_max = await game.is_score_max()
+        is_score_max = await game.is_points_max()
         while game.playing and not is_score_max:
-            await game.board.send("{} ! You're the tsar !".format(game.tsar.user.mention))
-            await game.draw_black_card()  # Send black card to board
+            tsar = await game.get_tsar()
+            await game.board.send("{} ! You're the tsar !".format(tsar.user.mention))
+            question = await game.draw_black_card()  # Send black card to board
+            await game.board.send(embed=question)
             players = await game.get_players()
             for player in players:
-                await player.draw_white_cards(game.white_cards)  # Draw white cards for players
+                await player.channel.send(embed=question)
+                await player.draw_white_cards(game.white_cards_id)  # Draw white cards for players
             await game.wait_for_players_answers()  # Wait for players to wote
-            await game.send_answers()  # Send all answers to the board
-            await game.wait_for_tsar_vote()  # Wait for tsar to vote
+            proposals = await game.send_answers()  # Send all answers to the board
+            await game.board.send(embed=proposals)
+            await tsar.channel.send(embed=proposals)
+            await game.wait_for_tsar_answer()  # Wait for tsar to vote
             await game.select_winner()  # Choose the winner
             await game.score()
-            is_score_max = await game.is_score_max()
+            is_score_max = await game.is_points_max()
         game.playing = False
         await game.save()
 
@@ -186,7 +191,7 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
                 await player.channel.send("Your answer is not in the acceptable range")
             else:
                 player.tsar_choice = answers
-                player.save()
+                await player.save()
                 await game.board.send("{} has voted !".format(ctx.author.mention))
         except ValueError:
             await player.channel.send("Your answer is not an integer !")
@@ -202,8 +207,8 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
     def _reminder(self):
         embed = dict(fields=dict(name="Reminder", inline=False, value="Course of the game :\n\
 1. A black card (question) is picked\n\
-2. MongoPlayers pick white cards (answers)\n\
-3. MongoPlayers vote  `Use {0}vote in your channel`\n\
+2. Players pick white cards (answers)\n\
+3. Players vote  `Use {0}vote in your channel`\n\
 4. Tsar vote  `Use {0}tsar in your channel`\n\
 5. Deciding winner and go back to start".format(self.bot.command_prefix)))
         message = create_embed(embed)

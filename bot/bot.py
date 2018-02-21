@@ -14,7 +14,6 @@ from discord.ext.commands.bot import Bot
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from utils.api import ApiKey
 from utils.embed import create_embed
 
 BOT = Bot(command_prefix="$", pm_help=False)  # Create the bot

@@ -231,7 +231,7 @@ class MongoPlayer(MongoDocument):
         proposals = str()
         white_cards = await self.get_white_cards()
         for index, card in enumerate(white_cards):
-            proposals = "{}. {}\n".format(index, card.text)
+            proposals += "{}. {}\n".format(index + 1, card.text)
         embed = create_embed(dict(fields=dict(name="Answers", value=proposals.rstrip(),
                                               inline=False)))
         await self.channel.send(embed=embed)

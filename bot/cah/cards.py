@@ -64,7 +64,7 @@ class MongoWhiteCard(MongoDocument):
             str -- Text of the card
         """
         try:
-            return html2text(self._document["text"])
+            return html2text(self._document["text"]).rstrip()
         except KeyError:
             return None
 
