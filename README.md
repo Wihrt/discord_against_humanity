@@ -4,14 +4,13 @@
 It's a discord bot providing Cards Against Humanity to discord
 
 # How to use it ?
-Just add it to your Discord server (ask me for a link)
+Just add it to your Discord server by using this link :
+https://discordapp.com/api/oauth2/authorize?client_id=410847498417209354&permissions=268445696&scope=bot
 
-# How to play ?
+# How to play ? Basic usage
 * Create your game by using `$create`
 * Join your game by using `$join`
 * Start your game by using `$start`
-
-There are other commands if you want to
 
 # What's next ?
 * Adding more logging
