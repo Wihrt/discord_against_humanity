@@ -1,0 +1,43 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+        "brief": {
+            "class": "logging.Formatter",
+            "datefmt": "%I:%M:%S",
+            "format": "%(levelname)-8s; %(name)-15s; %(message)s"
+        },
+        "multiline": {
+            "class": "logging.Formatter",
+            "format": "Level: %(levelname)s\nTime: %(asctime)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n"
+        }
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+            "stream": "ext://sys.stdout"
+        },
+        "file_handler": {
+            "level": "DEBUG",
+            "class": "logging.handlers.WatchedFileHandler",
+            "formatter": "multiline",
+            "filename": "log/bot.log",
+            "mode": "a",
+            "encoding": "utf-8"
+        }
+    },
+    "loggers": {
+        "discord": {
+            "level": "INFO"
+        },
+        "cah": {
+            "level": "DEBUG"
+        }
+    },
+    "root": {
+        "handlers": ["console", "file_handler"],
+        "level": "INFO"
+    }
+}

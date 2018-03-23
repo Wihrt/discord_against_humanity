@@ -2,16 +2,20 @@
 
 """Card Against Humanity's game class"""
 
-from logging import info
 from asyncio import sleep
+from logging import getLogger
 from random import sample, shuffle
+
 from discord import CategoryChannel, Guild, TextChannel
 
+from utils.decorator import log_event
 from utils.embed import create_embed
 from utils.mongodoc import MongoDocument
-from .player import MongoPlayer
-from .cards import MongoBlackCard
 
+from .cards import MongoBlackCard
+from .player import MongoPlayer
+
+LOGGER = getLogger(__name__)
 
 class MongoGame(MongoDocument):
     """Class for Game Mongo Document"""
@@ -233,6 +237,16 @@ class MongoGame(MongoDocument):
     # ---------------------------------------------------------------------------------------------
     @classmethod
     async def create(cls, discord_bot, mongo_client, guild):
+        """Create a new instance of MongoGame
+
+        Arguments:
+            discord_bot {Bot} -- Discord Bot
+            mongo_client {MongoClient} -- Mongo Client connected to database
+            guild {Guild} -- Guild
+
+        Returns:
+            MongoGame -- Object itself
+        """
         self = MongoGame(mongo_client)
         self._bot = discord_bot
         self._set_default_values()
@@ -245,7 +259,7 @@ class MongoGame(MongoDocument):
         """Get the Mongo document by searching the guild
 
         Arguments:
-            guild {int} -- Guild ID
+            guild {int} - - Guild ID
         """
         document = await self._collection.find_one(dict(guild=guild))
         if document:
@@ -267,11 +281,12 @@ class MongoGame(MongoDocument):
 
     # Public methods
     # ---------------------------------------------------------------------------------------------
+    @log_event
     async def get_players(self):
         """Get players
 
         Returns:
-            *MongoPlayer -- List of players in the game
+            *MongoPlayer - - List of players in the game
         """
         players = list()
         for player_id in self.players_id:
@@ -279,39 +294,42 @@ class MongoGame(MongoDocument):
             players.append(player)
         return players
 
+    @log_event
     async def add_player(self, player):
         """Add a player's id to the list of players
 
         Arguments:
-            player {MongoPlayer} -- MongoPlayer to add
+            player {MongoPlayer} - - MongoPlayer to add
 
         Raises:
-            TypeError -- Wrong type for player
+            TypeError - - Wrong type for player
         """
         if not isinstance(player, MongoPlayer):
             raise TypeError("Wrong type for player")
         self._document["players"].append(player.document_id)
         await self.save()
 
+    @log_event
     async def delete_player(self, player):
         """Remove a player's id to the list of players
 
         Arguments:
-            player {MongoPlayer} -- MongoPlayer to remove
+            player {MongoPlayer} - - MongoPlayer to remove
 
         Raises:
-            TypeError -- Wrong for player
+            TypeError - - Wrong for player
         """
         if not isinstance(player, MongoPlayer):
             raise TypeError("Wrong type for player")
         self._document["players"].remove(player.document_id)
         await self.save()
 
+    @log_event
     async def get_players_answers(self):
         """Count the number of player who has answered
 
         Returns:
-            int -- Number of player who has voted
+            int - - Number of player who has voted
         """
         count = 0
         players = await self.get_players()
@@ -321,11 +339,12 @@ class MongoGame(MongoDocument):
                     count += 1
         return count
 
+    @log_event
     async def get_players_score(self):
         """Get the players and their score
 
         Returns:
-            list -- List of Players and score
+            list - - List of Players and score
         """
         scores = list()
         players = await self.get_players()
@@ -333,33 +352,39 @@ class MongoGame(MongoDocument):
             scores.append([player, player.score])
         return scores
 
+    @log_event
     async def is_points_max(self):
         """Checks if one player got the max score
 
         Returns:
-            bool -- True/False
+            bool - - True/False
         """
         scores = await self.get_players_score()
         return not all(score < self.points for player, score in scores)
 
+    @log_event
     async def score(self):
+        """Displays the score"""
         scores = await self.get_players_score()
         fields = list()
         for player, score in scores:
-            fields.append(dict(name=player.user.display_name, value=score, inline=True))
+            fields.append(dict(name=player.user.display_name,
+                          value=score, inline=True))
         message = create_embed(dict(title="Score", fields=fields))
         await self.board.send(embed=message)
 
+    @log_event
     async def get_black_card(self):
         """Get the last black card drawed
 
         Returns:
-            MongoBlackCard -- Last black card drawed
+            MongoBlackCard - - Last black card drawed
         """
         black_card_id = self.black_cards_id[-1]
         black_card = await MongoBlackCard.create(self._client, black_card_id)
         return black_card
 
+    @log_event
     async def draw_black_card(self):
         """Draw a new Black Card and send it to the board"""
         # Get a new Black Card
@@ -377,6 +402,7 @@ class MongoGame(MongoDocument):
                                     description=black_card.text))
         return message
 
+    @log_event
     async def get_tsar(self):
         """Get the tsar player
 
@@ -386,22 +412,26 @@ class MongoGame(MongoDocument):
         player = await MongoPlayer.create(self._bot, self._client, self.tsar_id)
         return player
 
+    @log_event
     async def set_random_tsar(self):
         """Set a new random tsar"""
-        self._document["tsar"] = sample(self.players_id, 1)[0]  # Sample returns a list
+        self._document["tsar"] = sample(self.players_id, 1)[
+                                        0]  # Sample returns a list
         await self.save()
 
+    @log_event
     async def get_tsar_answer(self):
         """Returns if the tsar has voted
 
         Returns:
-            bool -- Tsar has voted
+            bool - - Tsar has voted
         """
         tsar = await self.get_tsar()
         if tsar.tsar_choice:
             return True
         return False
 
+    @log_event
     async def send_answers(self):
         """Create proposals and send them to the board"""
         # Combine Black Cards and MongoPlayer answers
@@ -430,6 +460,7 @@ class MongoGame(MongoDocument):
                                                 inline=False)))
         return message
 
+    @log_event
     async def wait_for_players_answers(self):
         """Waiting for all players, except the tsar, to vote"""
         self.voting = "players"
@@ -446,6 +477,7 @@ Vote in your private channel by using `{}vote`".format(self._bot.command_prefix)
         self.voting = "nobody"
         await self.save()
 
+    @log_event
     async def wait_for_tsar_answer(self):
         """Wait for tsar to vote"""
         self.voting = "tsar"
@@ -462,6 +494,7 @@ Vote in your private channel by using `{}tsar`".format(self._bot.command_prefix)
         self.voting = "nobody"
         await self.save()
 
+    @log_event
     async def select_winner(self):
         """Update the score of winner player and set it to tsar"""
         tsar = await self.get_tsar()

@@ -7,12 +7,10 @@ from logging import getLogger
 from discord import Color, PermissionOverwrite
 from discord.ext import commands
 
+from cah.checks import *
 from cah.game import MongoGame
 from cah.player import MongoPlayer
-from cah.checks import (game_exists, no_game_exists, is_player, is_not_player, game_playing,
-                        game_not_playing, is_enough_players, from_user_channel, is_players_voting,
-                        is_tsar_voting, is_tsar, is_not_tsar)
-
+from utils.decorator import log_event
 from utils.embed import create_embed
 
 LOGGER = getLogger(__name__)
@@ -26,12 +24,14 @@ class CardsAgainstHumanity(object):
 
     # Cards Against Humanity - Commands
     # -------------------------------------------------------------------------
+    @log_event
     @commands.command()
     @commands.guild_only()
     async def reminder(self, ctx):
         """Displays the reminder"""
         await ctx.channel.send(embed=self._reminder())
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(no_game_exists)
@@ -46,6 +46,7 @@ class CardsAgainstHumanity(object):
         await game.save()
         await ctx.message.delete()
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -61,6 +62,7 @@ class CardsAgainstHumanity(object):
         await game.delete()
         await ctx.message.delete()
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -83,6 +85,7 @@ class CardsAgainstHumanity(object):
         await game.add_player(player)
         await game.board.send("{} has joined the game !".format(ctx.author.mention))
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -102,6 +105,7 @@ class CardsAgainstHumanity(object):
         await game.board.send("{} has leaved the game !".format(ctx.author.mention))
         await game.board.set_permissions(ctx.author, overwrite=None)
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -139,7 +143,7 @@ class CardsAgainstHumanity(object):
         game.playing = False
         await game.save()
 
-
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -149,6 +153,7 @@ class CardsAgainstHumanity(object):
         game.playing = False
         await game.save()
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -174,6 +179,7 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
         except TypeError:
             await player.channel.send("Your answer is not an integer !")
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
@@ -196,6 +202,7 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
         except ValueError:
             await player.channel.send("Your answer is not an integer !")
 
+    @log_event
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
