@@ -23,8 +23,8 @@ BOT.mongo = AsyncIOMotorClient(host=environ["MONGO_HOST"], port=int(environ["MON
                                connect=True)
 
 # Extensions to load at start
-LOGGER = getLogger("bot")
-EXTENSIONS = ["commands.cah"]
+LOGGER = getLogger("discord_against_humanity.bot")
+EXTENSIONS = ["commands.discord_against_humanity"]
 
 
 def init_logger():
@@ -49,6 +49,14 @@ async def on_ready():
     info('ID: {}'.format(str(BOT.user.id)))
     info('------')
 
+@BOT.event
+async def on_command(ctx):
+    """Triggered when a command is called
+
+    Arguments:
+        ctx {[type]} -- [description]
+    """
+    LOGGER.debug("Command %s called. Arguments : %s" %(ctx.command, ctx.args))
 
 @BOT.event
 async def on_command_error(ctx, error):

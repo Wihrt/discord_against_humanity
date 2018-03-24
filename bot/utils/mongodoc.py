@@ -4,11 +4,11 @@ from abc import ABCMeta, abstractmethod
 from logging import getLogger
 
 from bson.objectid import ObjectId
-from .decorator import log_event
+from .debug import async_log_event
 
 LOGGER = getLogger(__name__)
 
-class MongoDocument(metaclass=ABCMeta):
+class MongoDocument(object):
     """Class for Document in MongoDB"""
 
     # Constants
@@ -24,7 +24,6 @@ class MongoDocument(metaclass=ABCMeta):
         self._client = mongo_client
         self._collection = self._client[self._DATABASE][self._COLLECTION]  # Get Mongo Collection
         self._document = dict()  # Mongo Document
-        self.logger = LOGGER
 
     @property
     def document_id(self):
@@ -49,16 +48,15 @@ class MongoDocument(metaclass=ABCMeta):
             raise TypeError
         self._document["_id"] = value
 
-    @log_event
+    @async_log_event
     async def get(self, document_id=None):
         """Get the Mongo document"""
         search = {"_id": self.document_id}
         if document_id:
             search = {"_id": document_id}
         self._document = await self._collection.find_one(search)
-        LOGGER.debug("Document : %s" % self._document)
 
-    @log_event
+    @async_log_event
     async def save(self):
         """Saves Mongo document"""
         if not self.document_id:
@@ -69,7 +67,7 @@ class MongoDocument(metaclass=ABCMeta):
                 {"_id": self.document_id}, self._document)
         self.get(self.document_id)
 
-    @log_event
+    @async_log_event
     async def delete(self):
         """Deletes Mongo document"""
         if self.document_id:

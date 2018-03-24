@@ -8,7 +8,7 @@ from random import sample, shuffle
 
 from discord import CategoryChannel, Guild, TextChannel
 
-from utils.decorator import log_event
+from utils.debug import async_log_event
 from utils.embed import create_embed
 from utils.mongodoc import MongoDocument
 
@@ -281,7 +281,7 @@ class MongoGame(MongoDocument):
 
     # Public methods
     # ---------------------------------------------------------------------------------------------
-    @log_event
+    @async_log_event
     async def get_players(self):
         """Get players
 
@@ -294,7 +294,7 @@ class MongoGame(MongoDocument):
             players.append(player)
         return players
 
-    @log_event
+    @async_log_event
     async def add_player(self, player):
         """Add a player's id to the list of players
 
@@ -309,7 +309,7 @@ class MongoGame(MongoDocument):
         self._document["players"].append(player.document_id)
         await self.save()
 
-    @log_event
+    @async_log_event
     async def delete_player(self, player):
         """Remove a player's id to the list of players
 
@@ -324,7 +324,7 @@ class MongoGame(MongoDocument):
         self._document["players"].remove(player.document_id)
         await self.save()
 
-    @log_event
+    @async_log_event
     async def get_players_answers(self):
         """Count the number of player who has answered
 
@@ -339,7 +339,7 @@ class MongoGame(MongoDocument):
                     count += 1
         return count
 
-    @log_event
+    @async_log_event
     async def get_players_score(self):
         """Get the players and their score
 
@@ -352,7 +352,7 @@ class MongoGame(MongoDocument):
             scores.append([player, player.score])
         return scores
 
-    @log_event
+    @async_log_event
     async def is_points_max(self):
         """Checks if one player got the max score
 
@@ -362,7 +362,7 @@ class MongoGame(MongoDocument):
         scores = await self.get_players_score()
         return not all(score < self.points for player, score in scores)
 
-    @log_event
+    @async_log_event
     async def score(self):
         """Displays the score"""
         scores = await self.get_players_score()
@@ -373,7 +373,7 @@ class MongoGame(MongoDocument):
         message = create_embed(dict(title="Score", fields=fields))
         await self.board.send(embed=message)
 
-    @log_event
+    @async_log_event
     async def get_black_card(self):
         """Get the last black card drawed
 
@@ -384,7 +384,7 @@ class MongoGame(MongoDocument):
         black_card = await MongoBlackCard.create(self._client, black_card_id)
         return black_card
 
-    @log_event
+    @async_log_event
     async def draw_black_card(self):
         """Draw a new Black Card and send it to the board"""
         # Get a new Black Card
@@ -402,7 +402,7 @@ class MongoGame(MongoDocument):
                                     description=black_card.text))
         return message
 
-    @log_event
+    @async_log_event
     async def get_tsar(self):
         """Get the tsar player
 
@@ -412,14 +412,14 @@ class MongoGame(MongoDocument):
         player = await MongoPlayer.create(self._bot, self._client, self.tsar_id)
         return player
 
-    @log_event
+    @async_log_event
     async def set_random_tsar(self):
         """Set a new random tsar"""
         self._document["tsar"] = sample(self.players_id, 1)[
                                         0]  # Sample returns a list
         await self.save()
 
-    @log_event
+    @async_log_event
     async def get_tsar_answer(self):
         """Returns if the tsar has voted
 
@@ -431,7 +431,7 @@ class MongoGame(MongoDocument):
             return True
         return False
 
-    @log_event
+    @async_log_event
     async def send_answers(self):
         """Create proposals and send them to the board"""
         # Combine Black Cards and MongoPlayer answers
@@ -460,7 +460,7 @@ class MongoGame(MongoDocument):
                                                 inline=False)))
         return message
 
-    @log_event
+    @async_log_event
     async def wait_for_players_answers(self):
         """Waiting for all players, except the tsar, to vote"""
         self.voting = "players"
@@ -477,7 +477,7 @@ Vote in your private channel by using `{}vote`".format(self._bot.command_prefix)
         self.voting = "nobody"
         await self.save()
 
-    @log_event
+    @async_log_event
     async def wait_for_tsar_answer(self):
         """Wait for tsar to vote"""
         self.voting = "tsar"
@@ -494,7 +494,7 @@ Vote in your private channel by using `{}tsar`".format(self._bot.command_prefix)
         self.voting = "nobody"
         await self.save()
 
-    @log_event
+    @async_log_event
     async def select_winner(self):
         """Update the score of winner player and set it to tsar"""
         tsar = await self.get_tsar()

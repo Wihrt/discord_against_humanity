@@ -4,11 +4,11 @@
     "formatters": {
         "brief": {
             "class": "logging.Formatter",
-            "datefmt": "%I:%M:%S",
             "format": "%(levelname)-8s; %(name)-15s; %(message)s"
         },
         "multiline": {
             "class": "logging.Formatter",
+            "datefmt": "%m/%d/%Y %I:%M:%S",
             "format": "Level: %(levelname)s\nTime: %(asctime)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n"
         }
     },
@@ -16,7 +16,7 @@
         "console": {
             "level": "DEBUG",
             "class": "logging.StreamHandler",
-            "formatter": "console",
+            "formatter": "brief",
             "stream": "ext://sys.stdout"
         },
         "file_handler": {
@@ -32,7 +32,10 @@
         "discord": {
             "level": "INFO"
         },
-        "cah": {
+        "discord_against_humanity": {
+            "level": "DEBUG"
+        },
+        "utils.debug": {
             "level": "DEBUG"
         }
     },
