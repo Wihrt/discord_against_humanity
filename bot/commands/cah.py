@@ -140,8 +140,7 @@ class CardsAgainstHumanity(object):
             await game.select_winner()  # Choose the winner
             await game.score()
             is_score_max = await game.is_points_max()
-        game.playing = False
-        await game.save()
+        await self.delete(ctx)
 
     @log_event
     @commands.command()
