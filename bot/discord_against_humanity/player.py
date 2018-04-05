@@ -6,8 +6,10 @@ from logging import getLogger
 
 from discord import Guild, Member, TextChannel
 
+from utils.debug import async_log_event
 from utils.embed import create_embed
 from utils.mongodoc import MongoDocument
+
 from .cards import MongoWhiteCard
 
 LOGGER = getLogger(__name__)
@@ -127,6 +129,11 @@ class MongoPlayer(MongoDocument):
 
     @property
     def tsar_choice(self):
+        """Get tsar choice
+
+        Returns:
+            int -- Choice of the tsar
+        """
         try:
             return self._document["tsar_choice"]
         except KeyError:
@@ -134,6 +141,14 @@ class MongoPlayer(MongoDocument):
 
     @tsar_choice.setter
     def tsar_choice(self, value):
+        """Set the tsar's choice
+
+        Arguments:
+            value {int} -- Value of the tsar choice
+
+        Raises:
+            TypeError -- Wrong type
+        """
         if not isinstance(value, int):
             raise TypeError("Wrong type for value : %s" % type(value))
         self._document["tsar_choice"] = value
@@ -166,6 +181,20 @@ class MongoPlayer(MongoDocument):
     # ---------------------------------------------------------------------------------------------
     @classmethod
     async def create(cls, discord_bot, mongo_client, document_id=None, user=None):
+        """Create a new MongoPlayer instance
+
+        Arguments:
+            discord_bot {Bot} -- Discord Bot
+            mongo_client {MongoClient} -- Mongo client connected to database
+
+        Keyword Arguments:
+            document_id {ObjectId} -- ObjectId of the user (default: {None})
+            user {Member} -- Discord Member (default: {None})
+
+        Returns:
+            MongoPlayer -- Object itself
+        """
+
         self = MongoPlayer(mongo_client)
         self._bot = discord_bot
         self._set_default_values()
@@ -173,6 +202,7 @@ class MongoPlayer(MongoDocument):
             await self.get(document_id)
         if user:
             await self._get(user)
+        LOGGER.debug("Player Document : %s" % self._document)
         return self
 
     # Private methods
@@ -193,6 +223,7 @@ class MongoPlayer(MongoDocument):
             self._document = document
 
     def _set_default_values(self):
+        """Sets default values for a new object"""
         self._document["guild"] = int()
         self._document["user"] = int()
         self._document["channel"] = int()
@@ -203,6 +234,7 @@ class MongoPlayer(MongoDocument):
 
     # Public methods
     # ---------------------------------------------------------------------------------------------
+    @async_log_event
     async def get_white_cards(self):
         """Get the White Cards
 
@@ -215,6 +247,7 @@ class MongoPlayer(MongoDocument):
             cards.append(card)
         return cards
 
+    @async_log_event
     async def draw_white_cards(self, used_cards):
         """Draw white cards for the player
 
@@ -236,6 +269,7 @@ class MongoPlayer(MongoDocument):
                                               inline=False)))
         await self.channel.send(embed=embed)
 
+    @async_log_event
     async def get_answers(self):
         """Get the White Cards answers
 
@@ -248,6 +282,7 @@ class MongoPlayer(MongoDocument):
             cards.append(card)
         return cards
 
+    @async_log_event
     async def add_answers(self, answers):
         """Store answers given by the player
 
@@ -260,11 +295,13 @@ class MongoPlayer(MongoDocument):
             del self.white_cards_id[answer - 1]
         await self.save()
 
+    @async_log_event
     async def delete_answers(self):
         """Delete answers for the player"""
         self._document["answers"] = list()
         await self.save()
 
+    @async_log_event
     async def delete_choice(self):
         """Delete choice for the player"""
         self.tsar_choice = 0

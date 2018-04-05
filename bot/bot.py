@@ -3,10 +3,12 @@
 """Itoxx Discord Bot"""
 
 # Imports
+from logging.config import dictConfig
 from logging import getLogger, Formatter, FileHandler, StreamHandler, info, critical, INFO
 from os import environ
 from sys import stdout
 from traceback import print_tb
+from json import load
 
 from discord import Color
 from discord.ext.commands import errors
@@ -21,28 +23,19 @@ BOT.mongo = AsyncIOMotorClient(host=environ["MONGO_HOST"], port=int(environ["MON
                                connect=True)
 
 # Extensions to load at start
-EXTENSIONS = ["commands.cah"]
+LOGGER = getLogger("discord_against_humanity.bot")
+EXTENSIONS = ["commands.discord_against_humanity"]
 
-def init_logger(level=INFO):
+
+def init_logger():
     """Set the logger to the desired level
 
     Keyword Arguments:
         level {int} -- Level of logging (default: {INFO})
     """
-    discord = getLogger("discord")
-    discord.setLevel(level)
-    root = getLogger()
-    root.setLevel(level)
-    out_formatter = Formatter("%(levelname)7s [%(name)s.%(funcName)s] %(message)s")
-    file_formatter = Formatter(
-        "[%(asctime)s] %(levelname)7s [%(name)s.%(funcName)s] %(message)s")
-    out_handler = StreamHandler(stream=stdout)
-    out_handler.setFormatter(out_formatter)
-    file_handler = FileHandler(filename="log/bot.log", encoding="utf-8", mode="a")
-    file_handler.setFormatter(file_formatter)
-    root.addHandler(out_handler)
-    root.addHandler(file_handler)
-
+    with open("logging.json", "r") as config_file:
+        data = load(config_file)
+        dictConfig(data)
 
 @BOT.event
 async def on_ready():
@@ -56,6 +49,14 @@ async def on_ready():
     info('ID: {}'.format(str(BOT.user.id)))
     info('------')
 
+@BOT.event
+async def on_command(ctx):
+    """Triggered when a command is called
+
+    Arguments:
+        ctx {[type]} -- [description]
+    """
+    LOGGER.debug("Command %s called. Arguments : %s" %(ctx.command, ctx.args))
 
 @BOT.event
 async def on_command_error(ctx, error):
@@ -99,13 +100,13 @@ Use `{}help` to get commands".format(ctx.prefix)
     await ctx.author.send(embed=message)
 
 def main():
-    init_logger(INFO)
+    init_logger()
     for extension in EXTENSIONS:
         try:
             BOT.load_extension(extension)
         except ImportError as err:
             exc = '{}: {}'.format(type(err).__name__, err)
-            critical('Failed to load extension {}\n{}'.format(extension, exc))
+            LOGGER.critical('Failed to load extension {}\n{}'.format(extension, exc))
     with open("token.txt", "r") as token_file:
         TOKEN = token_file.read()
         BOT.run(TOKEN)

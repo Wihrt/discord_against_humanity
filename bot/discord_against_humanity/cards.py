@@ -2,8 +2,11 @@
 
 """Cards Mongo document classes"""
 
+from logging import getLogger
 from html2text import html2text
 from utils.mongodoc import MongoDocument
+
+LOGGER = getLogger(__name__)
 
 class MongoBlackCard(MongoDocument):
     """Data class for Black Card Mongo document"""
@@ -43,6 +46,17 @@ class MongoBlackCard(MongoDocument):
     # ---------------------------------------------------------------------------------------------
     @classmethod
     async def create(cls, mongo_client, document_id=None):
+        """Creates a new MongoBlackCard object
+
+        Arguments:
+            mongo_client {AsyncIOMotorClient} -- Mongo client connected to database
+
+        Keyword Arguments:
+            document_id {ObectId} -- Object Id of the document (default: {None})
+
+        Returns:
+            MongoBlackCard -- Object
+        """
         self = MongoBlackCard(mongo_client)
         if document_id:
             await self.get(document_id)
@@ -72,6 +86,17 @@ class MongoWhiteCard(MongoDocument):
     # ---------------------------------------------------------------------------------------------
     @classmethod
     async def create(cls, mongo_client, document_id=None):
+        """Creates a new MongoWhiteCard object
+
+        Arguments:
+            mongo_client {AsyncIOMotorClient} -- Mongo client connected to database
+
+        Keyword Arguments:
+            document_id {ObectId} -- Object Id of the document (default: {None})
+
+        Returns:
+            MongoWhiteCard -- Object
+        """
         self = MongoWhiteCard(mongo_client)
         if document_id:
             await self.get(document_id)

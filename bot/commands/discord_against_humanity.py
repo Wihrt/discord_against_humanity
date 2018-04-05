@@ -7,15 +7,12 @@ from logging import getLogger
 from discord import Color, PermissionOverwrite
 from discord.ext import commands
 
-from cah.game import MongoGame
-from cah.player import MongoPlayer
-from cah.checks import (game_exists, no_game_exists, is_player, is_not_player, game_playing,
-                        game_not_playing, is_enough_players, from_user_channel, is_players_voting,
-                        is_tsar_voting, is_tsar, is_not_tsar)
-
+from discord_against_humanity.checks import *
+from discord_against_humanity.game import MongoGame
+from discord_against_humanity.player import MongoPlayer
 from utils.embed import create_embed
 
-LOGGER = getLogger(__name__)
+LOGGER = getLogger("discord_against_humanity.commands")
 
 class CardsAgainstHumanity(object):
     """Implements Cards Against Humanity commands"""
@@ -70,8 +67,8 @@ class CardsAgainstHumanity(object):
         await ctx.message.delete()
         permissions = self._default_permission(ctx.guild)
         user_permissions = PermissionOverwrite(read_messages=True, send_messages=True)
-        game = await MongoGame.create(self.bot, self.mongo_client, ctx.guild)
-        player = await MongoPlayer.create(self.bot, self.mongo_client, user=ctx.author)
+        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
+        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
         name = "_".join(ctx.author.display_name.split())
         player.guild = ctx.guild
         player.user = ctx.author
@@ -136,9 +133,7 @@ class CardsAgainstHumanity(object):
             await game.select_winner()  # Choose the winner
             await game.score()
             is_score_max = await game.is_points_max()
-        game.playing = False
-        await game.save()
-
+        await self.delete(ctx)
 
     @commands.command()
     @commands.guild_only()
