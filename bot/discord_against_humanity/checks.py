@@ -13,6 +13,7 @@ LOGGER = getLogger(__name__)
 
 @async_log_event
 async def game_exists(ctx):
+    """Check if game exists"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.document_id is not None:
@@ -21,6 +22,7 @@ async def game_exists(ctx):
 
 @async_log_event
 async def no_game_exists(ctx):
+    """Check if game does not exists"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.document_id is None:
@@ -29,6 +31,7 @@ async def no_game_exists(ctx):
 
 @async_log_event
 async def is_player(ctx):
+    """Checks if user is a player of the game"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
@@ -39,6 +42,7 @@ async def is_player(ctx):
 
 @async_log_event
 async def is_not_player(ctx):
+    """Check if user is not a player of the game"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
@@ -49,18 +53,21 @@ async def is_not_player(ctx):
 
 @async_log_event
 async def game_playing(ctx):
+    """Checks if the game is playing"""
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     LOGGER.debug("Result of game_playing : %s" % game.playing)
     return game.playing
 
 @async_log_event
 async def game_not_playing(ctx):
+    """Checks if the game is not playing"""
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     LOGGER.debug("Result of game_not playing : %s" % (not game.playing))
     return not game.playing
 
 @async_log_event
 async def is_enough_players(ctx):
+    """Checks if there is enough players to start the game"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if len(game.players_id) >= 2:
@@ -70,6 +77,7 @@ async def is_enough_players(ctx):
 
 @async_log_event
 async def from_user_channel(ctx):
+    """Checks if the command is sent from user channel"""
     result = False
     player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
     if ctx.channel == player.channel:
@@ -79,6 +87,7 @@ async def from_user_channel(ctx):
 
 @async_log_event
 async def is_players_voting(ctx):
+    """Checks if the players can vote"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.voting == "players":
@@ -88,6 +97,7 @@ async def is_players_voting(ctx):
 
 @async_log_event
 async def is_tsar_voting(ctx):
+    """Checks if the tsar can vote"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     if game.voting == "tsar":
@@ -97,6 +107,7 @@ async def is_tsar_voting(ctx):
 
 @async_log_event
 async def is_tsar(ctx):
+    """Checks if the player is the tsar"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
@@ -107,6 +118,7 @@ async def is_tsar(ctx):
 
 @async_log_event
 async def is_not_tsar(ctx):
+    """Checks if the player is not the tsar"""
     result = False
     game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
     player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)

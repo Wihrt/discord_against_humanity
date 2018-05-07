@@ -140,6 +140,7 @@ class CardsAgainstHumanity(object):
     @commands.check(game_exists)
     @commands.check(game_playing)
     async def stop(self, ctx):
+        """Stops the game"""
         game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
         game.playing = False
         await game.save()
@@ -153,6 +154,7 @@ class CardsAgainstHumanity(object):
     @commands.check(is_players_voting)
     @commands.check(is_not_tsar)
     async def vote(self, ctx, *answers):
+        """Player vote for their answers"""
         game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
         player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
         black_card = await game.get_black_card()
@@ -178,6 +180,7 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
     @commands.check(is_tsar_voting)
     @commands.check(is_tsar)
     async def tsar(self, ctx, *, answers):
+        """Tsar vote for his answer"""
         game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
         player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
         try:
@@ -196,10 +199,12 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
     @commands.check(game_exists)
     @commands.check(game_playing)
     async def score(self, ctx):
+        """Displays the score of the game"""
         game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
         await game.score()
 
     def _reminder(self):
+        """Displays the reminder of the game"""
         embed = dict(fields=dict(name="Reminder", inline=False, value="Course of the game :\n\
 1. A black card (question) is picked\n\
 2. Players pick white cards (answers)\n\
@@ -210,6 +215,7 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
         return message
 
     def _default_permission(self, guild):
+        """Create default permissions for channels"""
         permissions = dict()
         permissions[guild.default_role] = PermissionOverwrite(read_messages=False)  # Nobody can read the channel
         permissions[guild.me] = PermissionOverwrite(read_messages=True, send_messages=True)  # For the bot
