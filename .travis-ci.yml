@@ -1,10 +1,10 @@
-language: python
-
+sudo: 'required'
 services:
   - docker
 
-jobs:
-  include:
-    - stage: build docker image
-      script:
-        - echo "toto"
+script:
+  - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+  - cd bot && docker build -t megalooo/discord_against_humanity .
+  - docker push megalooo/discord_against_humanity
+
+
