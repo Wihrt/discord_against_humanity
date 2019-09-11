@@ -1,0 +1,14 @@
+- name: Download install script
+  get_url:
+    url: https://raw.githubusercontent.com/rancher/k3d/master/install.sh
+    dest: $HOME/k3d_install.sh
+    mode: 0755
+  register: k3d_install
+
+- name: Install k3d
+  shell: '{{ k3d_install.dest }}'
+
+- name: Remove install script
+  file:
+    path: '{{ k3d_install.dest }}'
+    state: absent

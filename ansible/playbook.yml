@@ -1,0 +1,13 @@
+
+
+- name: Build application
+  hosts: all
+  gather_facts: true
+  roles:
+    - build_bot
+
+- name: Deploy application
+  hosts: all
+  gather_facts: true
+  roles:
+    - deploy_bot

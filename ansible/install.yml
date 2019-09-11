@@ -1,0 +1,8 @@
+- name: Install pre-requisites
+  hosts: all
+  gather_facts: true
+  roles:
+    - install_prerequisites
+    - install_docker
+    - install_k3d
+    - install_kubectl

@@ -1,0 +1,11 @@
+- name: Get latest release version
+  uri:
+    url: https://storage.googleapis.com/kubernetes-release/release/stable.txt
+    return_content: true
+  register: latest_kubectl_release
+
+- name: Get kubectl
+  get_url:
+    url: https://storage.googleapis.com/kubernetes-release/release/{{ latest_kubectl_release.content | trim }}/bin/linux/amd64/kubectl
+    dest: /usr/bin/kubectl
+    mode: 0755

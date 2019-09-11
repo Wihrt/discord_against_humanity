@@ -1,0 +1,16 @@
+language: python
+python:
+  - "3.7"
+sudo: 'required'
+services:
+  - docker
+
+script:
+  - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+  - cd bot && docker build -t megalooo/discord_against_humanity .
+  - docker push megalooo/discord_against_humanity
+
+deploy:
+  
+
+

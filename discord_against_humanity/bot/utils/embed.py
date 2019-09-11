@@ -4,7 +4,6 @@
 
 from discord import Embed
 
-
 def create_embed(embed):
     """Create a complete Embed message
 

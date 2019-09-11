@@ -10,6 +10,7 @@ from discord import CategoryChannel, Guild, TextChannel
 
 from utils.debug import async_log_event
 from utils.embed import create_embed
+from utils.emoji import get_emojis
 from utils.mongodoc import MongoDocument
 
 from .cards import MongoBlackCard
@@ -324,20 +325,22 @@ class MongoGame(MongoDocument):
         self._document["players"].remove(player.document_id)
         await self.save()
 
-    @async_log_event
-    async def get_players_answers(self):
-        """Count the number of player who has answered
+    # @async_log_event
+    # async def get_players_answers(self):
+    #     """Count the number of player who has answered
 
-        Returns:
-            int - - Number of player who has voted
-        """
-        count = 0
-        players = await self.get_players()
-        for player in players:
-            if player.document_id != self.tsar_id:
-                if player.answers_id:
-                    count += 1
-        return count
+    #     Returns:
+    #         int - - Number of player who has voted
+    #     """
+    #     count = 0
+    #     players = await self.get_players()
+    #     for player in players:
+    #         if player.document_id != self.tsar_id:
+    #             message = await player.channel.fetch_message(player.answer_message)
+    #             for reaction in message.reactions:
+    #                 if reaction.count > 1:
+    #                     pass
+    #     return count
 
     @async_log_event
     async def get_players_score(self):
@@ -415,8 +418,7 @@ class MongoGame(MongoDocument):
     @async_log_event
     async def set_random_tsar(self):
         """Set a new random tsar"""
-        self._document["tsar"] = sample(self.players_id, 1)[
-                                        0]  # Sample returns a list
+        self._document["tsar"] = sample(self.players_id, 1)[0]  # Sample returns a list
         await self.save()
 
     @async_log_event
@@ -438,6 +440,7 @@ class MongoGame(MongoDocument):
         results = list()
         black_card = await self.get_black_card()
         players = await self.get_players()
+        tsar = await self.get_tsar()
         for player in players:
             if player.document_id != self.tsar_id:
                 answers = list()
@@ -456,43 +459,37 @@ class MongoGame(MongoDocument):
         proposals = str()
         for index, value in enumerate(self._document["results"]):
             proposals += "{}. {}".format(index + 1, value[1])
-        message = create_embed(dict(fields=dict(name="Proposals", value=proposals.rstrip(),
-                                                inline=False)))
+        message = create_embed(dict(fields=dict(name="Proposals", value=proposals.rstrip(), inline=False)))
+        await self.board.send(embed=proposals)
+        message = await tsar.channel.send(embed=proposals)
+        for emoji in get_emojis(self.guild.emojis, len(proposals)):
+            await message.add_reaction(emoji)
+        tsar.answer_message = message
+        tsar.save()
         return message
 
     @async_log_event
     async def wait_for_players_answers(self):
         """Waiting for all players, except the tsar, to vote"""
-        self.voting = "players"
-        await self.save()
-
-        await self.board.send("Time to vote ! \
-Vote in your private channel by using `{}vote`".format(self._bot.command_prefix))
-
-        number_of_answers = await self.get_players_answers()
-        while number_of_answers is not len(self.players_id) - 1:
+        await self.board.send("Time to vote !")
+        status = 0
+        while status is not len(self.players_id) - 1:
             await sleep(5)
-            number_of_answers = await self.get_players_answers()
-
-        self.voting = "nobody"
-        await self.save()
-
+            for player in self.get_players():
+                if player.document_id != self.tsar_id:
+                    player_status = await player.fetch_answers()
+                    if player_status:
+                        status += 1
+        
     @async_log_event
     async def wait_for_tsar_answer(self):
         """Wait for tsar to vote"""
-        self.voting = "tsar"
-        await self.save()
-
-        await self.board.send("Time for tsar to decide ! \
-Vote in your private channel by using `{}tsar`".format(self._bot.command_prefix))
-
-        tsar_answer = await self.get_tsar_answer()
+        tsar = await self.get_tsar()
+        await self.board.send("Time for tsar to decide !")
+        tsar_answer = await tsar.fetch_answers(number=1, tsar=True)
         while not tsar_answer:
             await sleep(5)
-            tsar_answer = await self.get_tsar_answer()
-
-        self.voting = "nobody"
-        await self.save()
+            tsar_answer = await tsar.fetch_answers(number=1, tsar=True)
 
     @async_log_event
     async def select_winner(self):
