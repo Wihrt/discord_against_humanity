@@ -1,0 +1,5 @@
+- name: Deploy bot
+  hosts: all
+  gather_facts: true
+  roles:
+    - deploy_bot

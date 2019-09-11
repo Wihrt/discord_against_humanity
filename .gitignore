@@ -100,6 +100,9 @@ ENV/
 # mypy
 .mypy_cache/
 
-bot/token.txt
-mongo/*.json
-ext/*.json
+discord_against_humanity/bot/token.txt
+discord_against_humanitymongo/*.json
+discord_against_humanity/ext/*.json
+ansible/group_vars/*.yml
+ansible/host_vars/*.yml
+ansible/inventory.yml

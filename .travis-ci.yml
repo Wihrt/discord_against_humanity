@@ -1,0 +1,10 @@
+language: python
+
+services:
+  - docker
+
+jobs:
+  include:
+    - stage: build docker image
+      script:
+        - echo "toto"

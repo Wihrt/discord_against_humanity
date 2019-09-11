@@ -4,10 +4,11 @@
 
 from logging import getLogger
 
-from discord import Guild, Member, TextChannel
+from discord import Guild, Member, TextChannel, Message
 
 from utils.debug import async_log_event
 from utils.embed import create_embed
+from utils.emoji import get_emojis, find_emojis_used
 from utils.mongodoc import MongoDocument
 
 from .cards import MongoWhiteCard
@@ -153,6 +154,24 @@ class MongoPlayer(MongoDocument):
             raise TypeError("Wrong type for value : %s" % type(value))
         self._document["tsar_choice"] = value
 
+    @async_property
+    async def answer_message(self):
+        """Get the answer message
+
+        Returns:
+          Message - Message containing answers
+        """
+        try:
+            return await self.channel.fetch_message(self._document["answer_message"])
+        except KeyError:
+            return await None
+
+    @answer_message.setter
+    def answer_message(self, value):
+        if not isinstance(value, Message):
+            raise TypeError("Wrong type for value : %s" % type(value))
+        self._document["answer_message"] = value.id
+        
     @property
     def white_cards_id(self):
         """Get white cards
@@ -229,8 +248,9 @@ class MongoPlayer(MongoDocument):
         self._document["channel"] = int()
         self._document["score"] = 0
         self._document["answers"] = list()
+        self._document["answer_message"] = int()
         self._document["white_cards"] = list()
-        self._document["tsar_choice"] = 0
+        self._document["tsar_choice"] = int()
 
     # Public methods
     # ---------------------------------------------------------------------------------------------
@@ -259,15 +279,18 @@ class MongoPlayer(MongoDocument):
             async for document in self._client[self._DATABASE]["white_cards"].aggregate(query):
                 if document["_id"] not in used_cards:
                     self._document["white_cards"].append(document["_id"])
-        await self.save()
 
         proposals = str()
         white_cards = await self.get_white_cards()
-        for index, card in enumerate(white_cards):
+        for (index, card) in enumerate(white_cards):
             proposals += "{}. {}\n".format(index + 1, card.text)
-        embed = create_embed(dict(fields=dict(name="Answers", value=proposals.rstrip(),
-                                              inline=False)))
-        await self.channel.send(embed=embed)
+        embed = create_embed(dict(fields=dict(name="Answers", value=proposals.rstrip(), inline=False)))
+
+        message = await self.channel.send(embed=embed)
+        for emoji in get_emojis(self.guild.emojis, self._WHITE_CARDS_NUMBER):
+            await message.add_reaction(emoji)
+        self.answer_message = message
+        await self.save()
 
     @async_log_event
     async def get_answers(self):
@@ -283,26 +306,44 @@ class MongoPlayer(MongoDocument):
         return cards
 
     @async_log_event
-    async def add_answers(self, answers):
-        """Store answers given by the player
-
+    async def fetch_answers(self, number=1, tsar=False):
+        """Fetch answers from reactions in the message
+        
         Arguments:
-            answers {*int} -- List of choices [1-7]
+            number {int} - Number of answers waited for the card
+            tsar {bool} - Set the choice for the tsar
         """
-        for answer in answers:
-            self._document["answers"].append(self.white_cards_id[answer - 1])
-        for answer in sorted(answers, reverse=True):
-            del self.white_cards_id[answer - 1]
-        await self.save()
+        key = "answers"
+        if tsar:
+            key = "tsar_choice"
+        message = await self.answer_message
+        answers = find_emojis_used(self.guild.emojis, self._WHITE_CARDS_NUMBER, message.reactions)
+        if len(answers):
+            for answer in answers:
+                self._document[key].append(self.white_cards_id[answer - 1])
+            for answer in sorted(answers, reverse=True):
+                del self.white_cards_id[answer - 1]
+            await self.save()
+            return True
+        else:
+            await self.channel.send("You need to pick {} answers".format(number))
+            return False
 
     @async_log_event
-    async def delete_answers(self):
-        """Delete answers for the player"""
-        self._document["answers"] = list()
+    async def delete_answers(self, tsar=False):
+        """Delete answers for the player/tsar
+        
+        Arguments:
+            tsar {bool} - Set the choice for the tsar
+        """
+        key = "answers"
+        if tsar:
+            key = "tsar_choice"
+        self._document[key] = list()
         await self.save()
 
-    @async_log_event
-    async def delete_choice(self):
-        """Delete choice for the player"""
-        self.tsar_choice = 0
-        await self.save()
+    # @async_log_event
+    # async def delete_choice(self):
+    #     """Delete choice for the player"""
+    #     self.tsar_choice = 0
+    #     await self.save()

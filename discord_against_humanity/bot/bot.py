@@ -13,7 +13,6 @@ from json import load
 from discord import Color
 from discord.ext.commands import errors
 from discord.ext.commands.bot import Bot
-from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from utils.embed import create_embed

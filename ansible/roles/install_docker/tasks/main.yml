@@ -1,0 +1,28 @@
+- name: Install package
+  apt:
+    name: '{{ item }}'
+    state: present
+  loop:
+    - apt-transport-https
+    - ca-certificates
+    - curl
+    - gnupg-agent
+    - software-properties-common
+
+- name: Install Docker GPG key
+  shell: 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -'
+
+- name: Add Docker repository
+  shell: 'add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"'
+
+- name: Install Docker
+  apt:
+    name: '{{ item }}'
+  loop:
+    - docker-ce
+    - docker-ce-cli
+    - containerd.io
+
+- name: Install Docker-Compose
+  pip:
+    name: docker-compose

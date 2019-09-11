@@ -125,10 +125,8 @@ class CardsAgainstHumanity(object):
             for player in players:
                 await player.channel.send(embed=question)
                 await player.draw_white_cards(game.white_cards_id)  # Draw white cards for players
-            await game.wait_for_players_answers()  # Wait for players to wote
-            proposals = await game.send_answers()  # Send all answers to the board
-            await game.board.send(embed=proposals)
-            await tsar.channel.send(embed=proposals)
+            await game.wait_for_players_answers()  # Wait for players to vote
+            await game.send_answers()  # Send all answers to the board
             await game.wait_for_tsar_answer()  # Wait for tsar to vote
             await game.select_winner()  # Choose the winner
             await game.score()
@@ -147,53 +145,6 @@ class CardsAgainstHumanity(object):
     @commands.command()
     @commands.guild_only()
     @commands.check(game_exists)
-    @commands.check(is_player)
-    @commands.check(game_playing)
-    @commands.check(from_user_channel)
-    @commands.check(is_players_voting)
-    @commands.check(is_not_tsar)
-    async def vote(self, ctx, *answers):
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
-        black_card = await game.get_black_card()
-        try:
-            answers = list(map(int, answers))
-            if len(answers) is not black_card.pick:
-                await player.channel.send("You must provide {} answers. \
-You provided {} answers".format(game.black_card.pick, len(answers)))
-            elif not all(i in range(1, 8) for i in answers):
-                await player.channel.send("Your answer(s) are not between 1 and 7")
-            else:
-                await player.add_answers(answers)
-                await game.board.send("{} has voted !".format(ctx.author.mention))
-        except TypeError:
-            await player.channel.send("Your answer is not an integer !")
-
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(is_player)
-    @commands.check(game_playing)
-    @commands.check(from_user_channel)
-    @commands.check(is_tsar_voting)
-    @commands.check(is_tsar)
-    async def tsar(self, ctx, *, answers):
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)
-        try:
-            answers = int(answers.split(" ")[0])
-            if not answers in range(1, len(game.players_id)):
-                await player.channel.send("Your answer is not in the acceptable range")
-            else:
-                player.tsar_choice = answers
-                await player.save()
-                await game.board.send("{} has voted !".format(ctx.author.mention))
-        except ValueError:
-            await player.channel.send("Your answer is not an integer !")
-
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
     @commands.check(game_playing)
     async def score(self, ctx):
         game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)
@@ -203,8 +154,8 @@ You provided {} answers".format(game.black_card.pick, len(answers)))
         embed = dict(fields=dict(name="Reminder", inline=False, value="Course of the game :\n\
 1. A black card (question) is picked\n\
 2. Players pick white cards (answers)\n\
-3. Players vote  `Use {0}vote in your channel`\n\
-4. Tsar vote  `Use {0}tsar in your channel`\n\
+3. Players vote using reactions in their channel\n\
+4. Tsar vote using reactions in his channel\n\
 5. Deciding winner and go back to start".format(self.bot.command_prefix)))
         message = create_embed(embed)
         return message

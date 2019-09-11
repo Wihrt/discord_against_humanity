@@ -1,0 +1,17 @@
+- name: Get PIP install script
+  get_url:
+    url: https://bootstrap.pypa.io/get-pip.py
+    dest: $HOME/get-pip.py
+  register: pip_install_script
+
+- name: Run PIP install script
+  command: python {{ pip_install_script.dest }}
+
+- name: Remove PIP install script
+  file:
+    path: '{{ pip_install_script.dest }}'
+    state: absent
+
+- name: Install python-apt
+  pip: 
+    name: python-apt

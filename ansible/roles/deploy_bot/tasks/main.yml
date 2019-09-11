@@ -1,0 +1,21 @@
+- name: Copy files
+  synchronize:
+    src: '{{ playbook_dir }}/../discord_against_humanity'
+    dest: $HOME
+    recursive: true
+    mode: push
+
+- name: Set folder
+  set_fact:
+    deploy_bot_folder: '$HOME/discord_against_humanity'
+
+- name: Create token file
+  template:
+    src: token.j2
+    dest: '{{ deploy_bot_folder }}/bot/token.txt'
+
+- name: Docker-Compose up
+  docker_compose:
+    build: yes
+    state: present
+    project_src: '{{ deploy_bot_folder }}'
