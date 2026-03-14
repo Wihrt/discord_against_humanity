@@ -1,0 +1,127 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  SRC_DIR: src
+  TEST_DIR: tests
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  # ---- Environment ----------------------------------------------------------
+
+  sync:
+    desc: Install / update all dependencies (including dev)
+    cmds:
+      - uv sync
+    sources:
+      - pyproject.toml
+      - uv.lock
+
+  # ---- Quality --------------------------------------------------------------
+
+  lint:
+    desc: Run Ruff linter on source and tests
+    deps: [sync]
+    cmds:
+      - uv run ruff check {{.SRC_DIR}} {{.TEST_DIR}}
+
+  lint:fix:
+    desc: Run Ruff linter and auto-fix issues
+    deps: [sync]
+    cmds:
+      - uv run ruff check --fix {{.SRC_DIR}} {{.TEST_DIR}}
+
+  format:
+    desc: Format code with Ruff
+    deps: [sync]
+    cmds:
+      - uv run ruff format {{.SRC_DIR}} {{.TEST_DIR}}
+
+  format:check:
+    desc: Check formatting without applying changes
+    deps: [sync]
+    cmds:
+      - uv run ruff format --check {{.SRC_DIR}} {{.TEST_DIR}}
+
+  typecheck:
+    desc: Run mypy type checker
+    deps: [sync]
+    cmds:
+      - uv run mypy {{.SRC_DIR}}
+
+  # ---- Testing --------------------------------------------------------------
+
+  test:
+    desc: Run the full test suite
+    deps: [sync]
+    cmds:
+      - uv run pytest {{.TEST_DIR}} -v
+
+  test:cov:
+    desc: Run tests with coverage report
+    deps: [sync]
+    cmds:
+      - uv run pytest {{.TEST_DIR}} --cov={{.SRC_DIR}} --cov-report=term-missing
+
+  # ---- Docker ----------------------------------------------------------------
+
+  docker:build:
+    desc: Build the Docker image
+    cmds:
+      - docker build -t discord-against-humanity:local .
+
+  docker:up:
+    desc: Start the stack with Docker Compose
+    cmds:
+      - docker compose up -d
+
+  docker:down:
+    desc: Stop the Docker Compose stack
+    cmds:
+      - docker compose down
+
+  docker:logs:
+    desc: Follow Docker Compose logs
+    cmds:
+      - docker compose logs -f
+
+  # ---- Database seed ---------------------------------------------------------
+
+  seed:convert:
+    desc: Convert a CAH JSON file into MongoDB seed files
+    cmds:
+      - uv run python scripts/convert_cah.py {{.CLI_ARGS}}
+
+  # ---- Helm ------------------------------------------------------------------
+
+  helm:template:
+    desc: Render the Helm chart templates locally
+    cmds:
+      - helm template my-bot helm/discord-against-humanity
+
+  helm:lint:
+    desc: Lint the Helm chart
+    cmds:
+      - helm lint helm/discord-against-humanity
+
+  # ---- Run -------------------------------------------------------------------
+
+  run:
+    desc: Start the bot locally (requires DISCORD_TOKEN and MongoDB)
+    deps: [sync]
+    cmds:
+      - uv run discord-against-humanity
+
+  # ---- All checks ------------------------------------------------------------
+
+  check:
+    desc: Run all quality checks (lint, format check, typecheck, test)
+    cmds:
+      - task: lint
+      - task: format:check
+      - task: typecheck
+      - task: test

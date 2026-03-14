@@ -1,36 +1,227 @@
 # Discord Against Humanity
 
-## Purpose of the bot
+A Discord bot that lets you play **Cards Against Humanity** with your friends directly inside a Discord server.
 
-It's a Discord Bot providing Cards Against Humanity
+## Features
 
-## How to use it
+- **Slash commands** — all interactions use Discord's native slash commands (`/create`, `/join`, `/vote`, …).
+- **Async** — built on top of [discord.py](https://discordpy.readthedocs.io/) 2.x and [Motor](https://motor.readthedocs.io/) for fully asynchronous I/O.
+- **MongoDB** persistence — game state, players, and cards are stored in MongoDB 8.
+- **Containerised** — ships with an optimised, multi-stage Dockerfile (non-root, bytecode-compiled).
+- **Kubernetes-ready** — includes a Helm chart for one-command deployments.
 
-Just add it to your Discord server by using this link :
-https://discordapp.com/api/oauth2/authorize?client_id=410847498417209354&permissions=268445696&scope=bot
+## How to Play
 
-## How to play
+| Step | Command | Description |
+|------|---------|-------------|
+| 1 | `/create` | Create a new game in the current server |
+| 2 | `/join` | Join the game (each player gets a private channel) |
+| 3 | `/start` | Start the game (optional: `/start points:10`) |
+| 4 | `/vote` | Players pick white cards via `/vote answers:1 3` |
+| 5 | `/tsar` | The Tsar selects the winning answer via `/tsar answer:2` |
+| 6 | `/score` | View the scoreboard at any time |
+| 7 | `/stop` | Stop the game early |
+| 8 | `/leave` | Leave the game |
+| 9 | `/delete` | Delete the game and clean up channels |
 
-* Create your game by using `$create`
-* Join your game by using `$join`
-* Start your game by using `$start`
+Use `/reminder` to display the game rules at any time.
 
+## Requirements
 
-## Next steps
+- Python ≥ 3.13
+- MongoDB ≥ 8
+- A [Discord Bot Token](https://discord.com/developers/applications)
+- [uv](https://docs.astral.sh/uv/) (for local development)
+- [Task](https://taskfile.dev/) (optional — task runner)
 
-* ~~Adding more logging~~
-* ~~Adding more documentation~~
-* See how to manage players who join/leave the game during the game
-* Supports localization
+## Local Development
 
+```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-## Local install
+# Clone and install
+git clone https://github.com/Wihrt/discord_against_humanity.git
+cd discord_against_humanity
+uv sync          # installs all deps including dev tools
 
-* Clone this repository
-* Put your token in /bot/token.txt
-* Grab a JSON file from http://www.crhallberg.com/cah/ and put it in /ext/cah.json
-* Run /ext/convert_cah.py
-* Run `docker-compose build`
-* Run `docker-compose run`
+# Run linter, tests and type checker
+uv run ruff check src/ tests/
+uv run pytest
+uv run mypy src/
 
+# Start the bot (requires DISCORD_TOKEN and a running MongoDB)
+export DISCORD_TOKEN="your-token-here"
+export MONGO_HOST="localhost"
+export MONGO_PORT="27017"
+uv run discord-against-humanity
+```
 
+### Using the Taskfile
+
+If you have [Task](https://taskfile.dev/) installed you can use the provided
+`Taskfile.yml` instead of remembering individual commands:
+
+```bash
+task sync          # install / update dependencies
+task lint          # run ruff
+task test          # run pytest
+task typecheck     # run mypy
+task check         # run all quality checks
+task docker:build  # build the Docker image
+task docker:up     # start the Docker Compose stack
+task docker:down   # stop the stack
+task run           # start the bot locally
+```
+
+Run `task` (no arguments) to see the full list of available tasks.
+
+## Seeding the Card Database
+
+The bot requires **black cards** (questions) and **white cards** (answers) to
+be present in MongoDB before a game can start.
+
+### 1. Obtain a CAH JSON file
+
+You can download a ready-made Cards Against Humanity JSON file from
+**<https://crhallberg.com/cah/>** (select the packs you want and export as
+JSON).  Save the file as `cah.json` in the repository root.
+
+### 2. Convert to MongoDB seed files
+
+```bash
+# Writes mongo/seed/black_cards.json and mongo/seed/white_cards.json
+python scripts/convert_cah.py cah.json --output-dir mongo/seed
+
+# Or via the Taskfile
+task seed:convert -- cah.json --output-dir mongo/seed
+```
+
+### 3. Import into MongoDB
+
+**Docker Compose (automatic):** The `docker-compose.yml` mounts `mongo/` into
+the MongoDB container's `/docker-entrypoint-initdb.d/` directory.  On a fresh
+volume the init script runs `mongoimport` automatically.
+
+```bash
+# First time — seed data is imported automatically
+docker compose up -d
+```
+
+> **Note:** MongoDB only runs init scripts when the data volume is empty. To
+> re-seed, remove the volume first: `docker compose down -v && docker compose up -d`.
+
+**Manual import:**
+
+```bash
+mongoimport --db cards_against_humanity \
+            --collection black_cards \
+            --file mongo/seed/black_cards.json \
+            --jsonArray
+
+mongoimport --db cards_against_humanity \
+            --collection white_cards \
+            --file mongo/seed/white_cards.json \
+            --jsonArray
+```
+
+## Deploy with Docker Compose
+
+1. Create a `.env` file:
+
+   ```env
+   DISCORD_TOKEN=your-bot-token-here
+   ```
+
+2. Make sure `mongo/seed/` contains the card data (see [Seeding the Card Database](#seeding-the-card-database)).
+
+3. Start the stack:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   This starts:
+   - **bot** — the Discord bot (Python 3.13, non-root)
+   - **mongo** — MongoDB 8 (seeded with card data on first start)
+
+4. Stop:
+
+   ```bash
+   docker compose down
+   ```
+
+## Deploy with Helm (Kubernetes)
+
+### Using an existing Secret
+
+Create a Kubernetes Secret containing your Discord token before installing the chart:
+
+```bash
+kubectl create secret generic discord-bot-token \
+  --from-literal=DISCORD_TOKEN=your-token-here
+```
+
+Then install the chart referencing that secret:
+
+```bash
+helm install my-bot helm/discord-against-humanity \
+  --set existingSecret=discord-bot-token \
+  --set mongodb.host=my-mongo-service
+```
+
+### Letting the chart create the Secret
+
+```bash
+helm install my-bot helm/discord-against-humanity \
+  --set discordToken=your-token-here \
+  --set mongodb.host=my-mongo-service
+```
+
+### Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.repository` | Container image | `ghcr.io/wihrt/discord_against_humanity` |
+| `image.tag` | Image tag | `latest` |
+| `existingSecret` | Name of a pre-existing Secret with `DISCORD_TOKEN` | `""` |
+| `discordToken` | Bot token (used only when `existingSecret` is empty) | `""` |
+| `mongodb.host` | MongoDB hostname | `mongo` |
+| `mongodb.port` | MongoDB port | `27017` |
+| `resources.requests.cpu` | CPU request | `100m` |
+| `resources.requests.memory` | Memory request | `128Mi` |
+| `resources.limits.cpu` | CPU limit | `200m` |
+| `resources.limits.memory` | Memory limit | `256Mi` |
+
+## CI / CD
+
+| Workflow | Trigger | Steps |
+|----------|---------|-------|
+| **PR** | Pull request → `main` | Ruff → Pytest → mypy → Docker build (no push) |
+| **Main** | Push to `main` | Ruff → Pytest → Docker build & push (`ghcr.io`, tagged with short SHA + `latest`) |
+| **Tag** | Manual dispatch | Docker build & push tagged with the given version |
+
+## Project Structure
+
+```
+.
+├── src/discord_against_humanity/   # Bot source code
+│   ├── bot.py                      # Entry point & bot setup
+│   ├── commands/cah.py             # Slash command Cog
+│   ├── checks/game_checks.py      # Pre-command validation
+│   ├── domain/                     # Domain models (game, player, cards)
+│   ├── infrastructure/mongo.py     # Repository pattern & MongoDB base class
+│   └── utils/                      # Embed builder & debug decorator
+├── tests/                          # Unit tests (pytest)
+├── scripts/convert_cah.py          # Card data converter
+├── mongo/                          # MongoDB seed scripts & data
+├── helm/                           # Helm chart
+├── Taskfile.yml                    # Task runner configuration
+├── Dockerfile                      # Multi-stage, non-root, uv-based
+├── docker-compose.yml              # Local stack (bot + MongoDB 8)
+└── pyproject.toml                  # Project & tool configuration (uv)
+```
+
+## License
+
+This project is open source. See the repository for details.

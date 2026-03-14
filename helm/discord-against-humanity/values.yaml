@@ -1,0 +1,42 @@
+# Default values for discord-against-humanity
+replicaCount: 1
+
+image:
+  repository: ghcr.io/wihrt/discord_against_humanity
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+# -- Name of an existing Secret that contains the DISCORD_TOKEN key.
+# When set, the chart will NOT create its own token Secret and will
+# reference this one instead.
+existingSecret: ""
+
+# -- Discord bot token (only used when existingSecret is empty).
+# Prefer using existingSecret for production deployments.
+discordToken: ""
+
+mongodb:
+  host: "mongo"
+  port: "27017"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
