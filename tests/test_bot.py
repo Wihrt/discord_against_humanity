@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-from discord import Intents
 from discord.ext.commands import Bot
 
 from discord_against_humanity.bot import create_bot, init_logger

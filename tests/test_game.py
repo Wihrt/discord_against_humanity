@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bson.objectid import ObjectId
-from discord import CategoryChannel, Guild, TextChannel
 
 from discord_against_humanity.domain.game import MongoGame
 
@@ -228,7 +227,9 @@ class TestGameMethods:
 
         assert pid not in game._document["players"]
 
-    async def test_get_players_answers_counts_non_tsar(self, game, mock_bot, mock_mongo_client):
+    async def test_get_players_answers_counts_non_tsar(
+        self, game, mock_bot, mock_mongo_client
+    ):
         tsar_id = ObjectId()
         player1_id = ObjectId()
         player2_id = ObjectId()

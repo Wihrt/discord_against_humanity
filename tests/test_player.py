@@ -1,10 +1,9 @@
 """Tests for MongoPlayer."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bson.objectid import ObjectId
-from discord import Guild, Member, TextChannel
 
 from discord_against_humanity.domain.player import MongoPlayer
 
@@ -148,11 +147,15 @@ class TestPlayerCreate:
             }
         )
 
-        player = await MongoPlayer.create(mock_bot, mock_mongo_client, document_id=doc_id)
+        player = await MongoPlayer.create(
+            mock_bot, mock_mongo_client, document_id=doc_id
+        )
         assert player.document_id == doc_id
         assert player.score == 10
 
-    async def test_create_with_member_user(self, mock_bot, mock_mongo_client, mock_member):
+    async def test_create_with_member_user(
+        self, mock_bot, mock_mongo_client, mock_member
+    ):
         mock_col = mock_mongo_client["cards_against_humanity"]["players"]
         mock_col.find_one = AsyncMock(
             return_value={

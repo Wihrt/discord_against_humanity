@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
 from bson.objectid import ObjectId
 
 from discord_against_humanity.domain.cards import MongoBlackCard, MongoWhiteCard

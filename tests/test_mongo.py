@@ -96,7 +96,9 @@ class TestSave:
         mock_col.insert_one.assert_awaited_once()
         assert doc.document_id == insert_result.inserted_id
 
-    async def test_save_replaces_existing_document(self, doc, mock_col, sample_object_id):
+    async def test_save_replaces_existing_document(
+        self, doc, mock_col, sample_object_id
+    ):
         doc.document_id = sample_object_id
         doc._document["field"] = "updated"
         replaced = {"_id": sample_object_id, "field": "updated"}
