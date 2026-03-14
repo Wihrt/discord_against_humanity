@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Self
 
+import discord
 from discord import Guild, Member, TextChannel
 from discord.ext.commands import Bot
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -195,7 +196,8 @@ class MongoPlayer(MongoDocument):
         discord_bot: Bot,
         mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
         document_id: object = None,
-        user: Member | None = None,
+        user: Member | discord.User | None = None,
+        guild: Guild | None = None,
     ) -> Self:
         """Create a new MongoPlayer instance.
 
@@ -203,7 +205,8 @@ class MongoPlayer(MongoDocument):
             discord_bot: The Discord bot instance.
             mongo_client: Motor client connected to the database.
             document_id: Optional ObjectId to load an existing player.
-            user: Optional Discord Member to look up an existing player.
+            user: Optional Discord Member/User to look up an existing player.
+            guild: Optional Discord Guild to resolve member from user.
 
         Returns:
             A new MongoPlayer instance.
@@ -214,7 +217,14 @@ class MongoPlayer(MongoDocument):
         if document_id:
             await self.get(document_id)
         if user:
-            await self._get(user)
+            # Resolve to Member if we have a guild and a bare User
+            member = user
+            if guild is not None and not isinstance(user, Member):
+                resolved = guild.get_member(user.id)
+                if resolved is not None:
+                    member = resolved
+            if isinstance(member, Member):
+                await self._get(member)
         logger.debug("Player Document: %s", self._document)
         return self
 

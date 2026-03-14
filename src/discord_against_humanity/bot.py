@@ -6,10 +6,11 @@ import logging.config
 from importlib import resources
 from os import environ
 from traceback import print_tb
+from typing import Any
 
 import discord
-from discord import Color
-from discord.ext.commands import Bot, errors
+from discord import Color, app_commands
+from discord.ext.commands import Bot
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from discord_against_humanity.utils.embed import create_embed
@@ -36,8 +37,9 @@ def create_bot() -> Bot:
     """
     intents = discord.Intents.default()
     intents.message_content = True
+    intents.members = True
 
-    bot = Bot(command_prefix="$", intents=intents)
+    bot = Bot(command_prefix="!", intents=intents)
     bot.mongo = AsyncIOMotorClient(  # type: ignore[attr-defined]
         host=environ.get("MONGO_HOST", "localhost"),
         port=int(environ.get("MONGO_PORT", "27017")),
@@ -51,66 +53,54 @@ def create_bot() -> Bot:
         logging.info("ID: %s", bot.user.id if bot.user else "Unknown")
         logging.info("------")
 
-    @bot.event
-    async def on_command(ctx: discord.ext.commands.Context) -> None:  # type: ignore[name-defined]
-        """Log command invocations.
-
-        Args:
-            ctx: The invocation context.
-        """
-        logger.debug("Command %s called. Arguments: %s", ctx.command, ctx.args)
-
-    @bot.event
-    async def on_command_error(
-        ctx: discord.ext.commands.Context,  # type: ignore[name-defined]
-        error: errors.CommandError,
+    @bot.tree.error
+    async def on_app_command_error(
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
     ) -> None:
-        """Handle command errors by sending a DM to the invoking user.
+        """Handle slash command errors by sending an ephemeral message.
 
         Args:
-            ctx: The invocation context.
+            interaction: The interaction that triggered the error.
             error: The error that was raised.
         """
-        content: dict = {"colour": Color.dark_red()}
-        logging.critical("%s %s", ctx.command, error)
-        field: dict = {"name": "Error", "inline": False}
+        content: dict[str, Any] = {"colour": Color.dark_red()}
+        logger.critical("%s %s", interaction.command, error)
+        field: dict[str, Any] = {"name": "Error", "inline": False}
 
-        if isinstance(error, errors.NoPrivateMessage):
-            field["value"] = (
-                ":warning: This command cannot be used in private messages."
-            )
-        elif isinstance(error, errors.CommandOnCooldown):
+        if isinstance(error, app_commands.CheckFailure):
+            field["value"] = ":no_entry_sign: A precondition check has failed."
+        elif isinstance(error, app_commands.CommandOnCooldown):
             field["value"] = (
                 f":stopwatch: This command is on cooldown, "
                 f"retry after {error.retry_after:.2f} seconds"
             )
-        elif isinstance(error, errors.DisabledCommand):
-            field["value"] = "This command is disabled and cannot be used."
-        elif isinstance(error, errors.CommandNotFound):
-            field["value"] = (
-                f":grey_question: Unknown command. "
-                f"Use `{ctx.prefix}help` to get commands"
-            )
-        elif isinstance(error, errors.MissingPermissions):
+        elif isinstance(error, app_commands.MissingPermissions):
             field["value"] = f":no_entry_sign: {error}"
-        elif isinstance(error, errors.MissingRequiredArgument):
-            field["value"] = "An argument is missing"
-        elif isinstance(error, errors.CheckFailure):
-            field["value"] = ":no_entry_sign: At least 1 check has failed"
-        elif isinstance(error, errors.NotOwner):
-            field["value"] = ":no_entry_sign: You are not the owner of the bot"
-        elif isinstance(error, errors.CommandInvokeError):
-            field["value"] = (
-                f":stop_sign: The command {ctx.command} has thrown an error."
+        elif isinstance(error, app_commands.CommandInvokeError):
+            cmd_name = (
+                interaction.command.name if interaction.command else "unknown"
             )
-            cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
-            logging.critical("In %s:", cmd_name)
+            field["value"] = (
+                f":stop_sign: The command {cmd_name} has thrown an error."
+            )
+            logger.critical("In %s:", cmd_name)
             print_tb(error.original.__traceback__)
-            logging.critical("%s: %s", type(error.original).__name__, error.original)
+            logger.critical(
+                "%s: %s", type(error.original).__name__, error.original
+            )
+        else:
+            field["value"] = ":x: An unexpected error occurred."
 
         content["fields"] = field
         message = create_embed(content)
-        await ctx.author.send(embed=message)
+
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=message, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                embed=message, ephemeral=True
+            )
 
     return bot
 
@@ -136,8 +126,9 @@ def main() -> None:
 
     @bot.event
     async def setup_hook() -> None:
-        """Load extensions when the bot starts."""
+        """Load extensions and sync slash commands when the bot starts."""
         await load_extensions(bot)
+        await bot.tree.sync()
 
     token = environ.get("DISCORD_TOKEN", "")
     if not token:

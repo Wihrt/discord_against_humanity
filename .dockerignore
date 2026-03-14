@@ -1,0 +1,53 @@
+# Version control
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Linters / type checkers
+.mypy_cache/
+.ruff_cache/
+
+# CI / CD
+.github/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Helm
+helm/
+
+# Documentation
+README.md
+LICENSE
+
+# Legacy bot directory
+bot/
+ext/
+mongo/

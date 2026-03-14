@@ -1,10 +1,10 @@
-"""Cards Against Humanity command module."""
+"""Cards Against Humanity slash command module."""
 
 import logging
 from typing import Any
 
 import discord
-from discord import PermissionOverwrite
+from discord import PermissionOverwrite, app_commands
 from discord.ext import commands
 
 from discord_against_humanity.checks.game_checks import (
@@ -29,7 +29,7 @@ logger = logging.getLogger("discord_against_humanity.commands")
 
 
 class CardsAgainstHumanity(commands.Cog):
-    """Implements Cards Against Humanity commands."""
+    """Implements Cards Against Humanity slash commands."""
 
     def __init__(self, bot: commands.Bot) -> None:
         """Initialize the Cog.
@@ -40,101 +40,148 @@ class CardsAgainstHumanity(commands.Cog):
         self.bot = bot
         self.mongo_client = self.bot.mongo  # type: ignore[attr-defined]
 
-    # Commands
+    # Slash Commands
     # -------------------------------------------------------------------------
 
-    @commands.command()
-    @commands.guild_only()
-    async def reminder(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="reminder", description="Display the game rules reminder"
+    )
+    @app_commands.guild_only()
+    async def reminder(self, interaction: discord.Interaction) -> None:
         """Display the game rules reminder.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        await ctx.channel.send(embed=self._reminder())
+        await interaction.response.send_message(embed=self._reminder())
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(no_game_exists)
-    async def create(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="create",
+        description="Create a new game of Cards Against Humanity",
+    )
+    @app_commands.guild_only()
+    @app_commands.check(no_game_exists)
+    async def create(self, interaction: discord.Interaction) -> None:
         """Create a new game of Cards Against Humanity.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        permissions = self._default_permission(ctx.guild)  # type: ignore[arg-type]
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
-        game.guild = ctx.guild  # type: ignore[assignment]
-        game.category = await ctx.guild.create_category("Cards Against Humanity")  # type: ignore[union-attr]
-        game.board = await ctx.guild.create_text_channel(  # type: ignore[union-attr]
+        assert interaction.guild is not None
+        permissions = self._default_permission(interaction.guild)
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        game.guild = interaction.guild
+        game.category = await interaction.guild.create_category(
+            "Cards Against Humanity"
+        )
+        game.board = await interaction.guild.create_text_channel(
             "board", category=game.category, overwrites=permissions
         )
         await game.save()
-        await ctx.message.delete()
+        await interaction.response.send_message(
+            "Game created! Use `/join` to join.", ephemeral=True
+        )
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    async def delete(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="delete",
+        description="Delete the current game of Cards Against Humanity",
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    async def delete_game(self, interaction: discord.Interaction) -> None:
         """Delete a game of Cards Against Humanity.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
         players = await game.get_players()
         for player in players:
-            await player.channel.delete()  # type: ignore[union-attr]
+            if player.channel is not None:
+                await player.channel.delete()
             await player.delete()
-        await game.board.delete()  # type: ignore[union-attr]
-        await game.category.delete()  # type: ignore[union-attr]
+        if game.board is not None:
+            await game.board.delete()
+        if game.category is not None:
+            await game.category.delete()
         await game.delete()
-        await ctx.message.delete()
+        await interaction.followup.send("Game deleted.", ephemeral=True)
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(is_not_player)
-    async def join(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="join", description="Join the Cards Against Humanity game"
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_not_player)
+    async def join(self, interaction: discord.Interaction) -> None:
         """Join a Cards Against Humanity game.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        await ctx.message.delete()
-        permissions = self._default_permission(ctx.guild)  # type: ignore[arg-type]
+        assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
+        permissions = self._default_permission(interaction.guild)
         user_permissions = PermissionOverwrite(
             read_messages=True, send_messages=True
         )
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)  # type: ignore[attr-defined]
-        name = "_".join(ctx.author.display_name.split())
-        player.guild = ctx.guild  # type: ignore[assignment]
-        player.user = ctx.author  # type: ignore[assignment]
-        player.channel = await ctx.guild.create_text_channel(  # type: ignore[union-attr]
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
+        name = "_".join(interaction.user.display_name.split())
+        player.guild = interaction.guild
+        player.user = interaction.user  # type: ignore[assignment]
+        player.channel = await interaction.guild.create_text_channel(
             name, category=game.category, overwrites=permissions
         )
         await game.board.set_permissions(  # type: ignore[union-attr]
-            ctx.author, overwrite=user_permissions
+            interaction.user, overwrite=user_permissions
         )
-        await player.channel.set_permissions(ctx.author, overwrite=user_permissions)  # type: ignore[union-attr]
+        await player.channel.set_permissions(
+            interaction.user, overwrite=user_permissions
+        )
         await player.save()
         await game.add_player(player)
-        await game.board.send(f"{ctx.author.mention} has joined the game!")  # type: ignore[union-attr]
+        await game.board.send(  # type: ignore[union-attr]
+            f"{interaction.user.mention} has joined the game!"
+        )
+        await interaction.followup.send("You joined the game!", ephemeral=True)
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(is_player)
-    async def leave(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="leave", description="Leave the Cards Against Humanity game"
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_player)
+    async def leave(self, interaction: discord.Interaction) -> None:
         """Leave the game.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        await ctx.message.delete()
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
         await game.delete_player(player)
         if player.document_id == game.tsar_id:
             await game.set_random_tsar()
@@ -143,25 +190,37 @@ class CardsAgainstHumanity(commands.Cog):
                 f"{tsar.user.mention}! You're the tsar!"
             )
         await game.save()
-        await player.channel.delete()  # type: ignore[union-attr]
+        if player.channel is not None:
+            await player.channel.delete()
         await player.delete()
-        await game.board.send(f"{ctx.author.mention} has left the game!")  # type: ignore[union-attr]
-        await game.board.set_permissions(ctx.author, overwrite=None)  # type: ignore[union-attr]
+        await game.board.send(  # type: ignore[union-attr]
+            f"{interaction.user.mention} has left the game!"
+        )
+        await game.board.set_permissions(  # type: ignore[union-attr]
+            interaction.user, overwrite=None
+        )
+        await interaction.followup.send("You left the game.", ephemeral=True)
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(game_not_playing)
-    @commands.check(is_enough_players)
-    async def start(self, ctx: commands.Context, points: int = 5) -> None:
+    @app_commands.command(name="start", description="Start the game")
+    @app_commands.describe(points="Number of points to win (default 5)")
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(game_not_playing)
+    @app_commands.check(is_enough_players)
+    async def start(
+        self, interaction: discord.Interaction, points: int = 5
+    ) -> None:
         """Start the game.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
             points: Number of points required to win (default 5).
         """
-        await ctx.message.delete()
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
         game.playing = True
         game.points = points
         await game.save()
@@ -172,114 +231,166 @@ class CardsAgainstHumanity(commands.Cog):
         is_score_max = await game.is_points_max()
         while game.playing and not is_score_max:
             tsar = await game.get_tsar()
-            await game.board.send(f"{tsar.user.mention}! You're the tsar!")  # type: ignore[union-attr]
+            await game.board.send(  # type: ignore[union-attr]
+                f"{tsar.user.mention}! You're the tsar!"
+            )
             question = await game.draw_black_card()
             await game.board.send(embed=question)  # type: ignore[union-attr]
             players = await game.get_players()
             for player in players:
-                await player.channel.send(embed=question)  # type: ignore[union-attr]
+                if player.channel is not None:
+                    await player.channel.send(embed=question)
                 await player.draw_white_cards(game.white_cards_id)
             await game.wait_for_players_answers()
             proposals = await game.send_answers()
             await game.board.send(embed=proposals)  # type: ignore[union-attr]
-            await tsar.channel.send(embed=proposals)  # type: ignore[union-attr]
+            if tsar.channel is not None:
+                await tsar.channel.send(embed=proposals)
             await game.wait_for_tsar_answer()
             await game.select_winner()
             await game.score()
             is_score_max = await game.is_points_max()
-        await self.delete(ctx)
+        await self._cleanup_game(interaction)
+        await interaction.followup.send("Game over!", ephemeral=True)
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(game_playing)
-    async def stop(self, ctx: commands.Context) -> None:
+    @app_commands.command(name="stop", description="Stop the current game")
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(game_playing)
+    async def stop(self, interaction: discord.Interaction) -> None:
         """Stop the game.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
         game.playing = False
         await game.save()
+        await interaction.response.send_message("Game stopped.", ephemeral=True)
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(is_player)
-    @commands.check(game_playing)
-    @commands.check(from_user_channel)
-    @commands.check(is_players_voting)
-    @commands.check(is_not_tsar)
-    async def vote(self, ctx: commands.Context, *answers: str) -> None:
+    @app_commands.command(
+        name="vote", description="Vote for your answer(s) as a player"
+    )
+    @app_commands.describe(
+        answers="Card number(s) to vote for, space-separated"
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_player)
+    @app_commands.check(game_playing)
+    @app_commands.check(from_user_channel)
+    @app_commands.check(is_players_voting)
+    @app_commands.check(is_not_tsar)
+    async def vote(
+        self, interaction: discord.Interaction, answers: str
+    ) -> None:
         """Vote for answers as a player.
 
         Args:
-            ctx: The invocation context.
-            answers: Card numbers to vote for.
+            interaction: The Discord interaction.
+            answers: Space-separated card numbers to vote for.
         """
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
         black_card = await game.get_black_card()
         try:
-            int_answers = list(map(int, answers))
+            int_answers = list(map(int, answers.split()))
             if len(int_answers) != black_card.pick:
-                await player.channel.send(  # type: ignore[union-attr]
+                await interaction.response.send_message(
                     f"You must provide {black_card.pick} answers. "
-                    f"You provided {len(int_answers)} answers"
+                    f"You provided {len(int_answers)} answers.",
+                    ephemeral=True,
                 )
             elif not all(i in range(1, 8) for i in int_answers):
-                await player.channel.send(  # type: ignore[union-attr]
-                    "Your answer(s) are not between 1 and 7"
+                await interaction.response.send_message(
+                    "Your answer(s) are not between 1 and 7.", ephemeral=True
                 )
             else:
                 await player.add_answers(int_answers)
-                await game.board.send(f"{ctx.author.mention} has voted!")  # type: ignore[union-attr]
+                await game.board.send(  # type: ignore[union-attr]
+                    f"{interaction.user.mention} has voted!"
+                )
+                await interaction.response.send_message(
+                    "Vote recorded!", ephemeral=True
+                )
         except (TypeError, ValueError):
-            await player.channel.send("Your answer is not an integer!")  # type: ignore[union-attr]
+            await interaction.response.send_message(
+                "Your answer is not a valid integer!", ephemeral=True
+            )
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(is_player)
-    @commands.check(game_playing)
-    @commands.check(from_user_channel)
-    @commands.check(is_tsar_voting)
-    @commands.check(is_tsar)
-    async def tsar(self, ctx: commands.Context, *, answers: str) -> None:
+    @app_commands.command(
+        name="tsar", description="Vote for an answer as the tsar"
+    )
+    @app_commands.describe(answer="The answer number to select")
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_player)
+    @app_commands.check(game_playing)
+    @app_commands.check(from_user_channel)
+    @app_commands.check(is_tsar_voting)
+    @app_commands.check(is_tsar)
+    async def tsar(self, interaction: discord.Interaction, answer: int) -> None:
         """Vote for an answer as the tsar.
 
         Args:
-            ctx: The invocation context.
-            answers: The answer number to select.
+            interaction: The Discord interaction.
+            answer: The answer number to select.
         """
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
-        player = await MongoPlayer.create(ctx.bot, ctx.bot.mongo, user=ctx.author)  # type: ignore[attr-defined]
-        try:
-            answer = int(answers.split(" ")[0])
-            if answer not in range(1, len(game.players_id)):  # type: ignore[arg-type]
-                await player.channel.send(  # type: ignore[union-attr]
-                    "Your answer is not in the acceptable range"
-                )
-            else:
-                player.tsar_choice = answer
-                await player.save()
-                await game.board.send(f"{ctx.author.mention} has voted!")  # type: ignore[union-attr]
-        except ValueError:
-            await player.channel.send("Your answer is not an integer!")  # type: ignore[union-attr]
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
+        if answer not in range(1, len(game.players_id)):  # type: ignore[arg-type]
+            await interaction.response.send_message(
+                "Your answer is not in the acceptable range.", ephemeral=True
+            )
+        else:
+            player.tsar_choice = answer
+            await player.save()
+            await game.board.send(  # type: ignore[union-attr]
+                f"{interaction.user.mention} has voted!"
+            )
+            await interaction.response.send_message(
+                "Tsar vote recorded!", ephemeral=True
+            )
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.check(game_exists)
-    @commands.check(game_playing)
-    async def score(self, ctx: commands.Context) -> None:
+    @app_commands.command(
+        name="score", description="Display the current scores"
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(game_playing)
+    async def score(self, interaction: discord.Interaction) -> None:
         """Display the current scores.
 
         Args:
-            ctx: The invocation context.
+            interaction: The Discord interaction.
         """
-        game = await MongoGame.create(ctx.bot, ctx.bot.mongo, ctx.guild)  # type: ignore[attr-defined]
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
         await game.score()
+        await interaction.response.send_message(
+            "Score displayed on the board.", ephemeral=True
+        )
 
     # Helpers
     # -------------------------------------------------------------------------
@@ -298,10 +409,8 @@ class CardsAgainstHumanity(commands.Cog):
                     "Course of the game:\n"
                     "1. A black card (question) is picked\n"
                     "2. Players pick white cards (answers)\n"
-                    f"3. Players vote  `Use {self.bot.command_prefix}"
-                    "vote in your channel`\n"
-                    f"4. Tsar vote  `Use {self.bot.command_prefix}"
-                    "tsar in your channel`\n"
+                    "3. Players vote — Use `/vote` in your channel\n"
+                    "4. Tsar votes — Use `/tsar` in your channel\n"
                     "5. Deciding winner and go back to start"
                 ),
             }
@@ -319,12 +428,39 @@ class CardsAgainstHumanity(commands.Cog):
         Returns:
             A permissions overwrites mapping.
         """
-        permissions: dict[discord.Role | discord.Member, PermissionOverwrite] = {}
-        permissions[guild.default_role] = PermissionOverwrite(read_messages=False)
+        permissions: dict[
+            discord.Role | discord.Member, PermissionOverwrite
+        ] = {}
+        permissions[guild.default_role] = PermissionOverwrite(
+            read_messages=False
+        )
         permissions[guild.me] = PermissionOverwrite(
             read_messages=True, send_messages=True
         )
         return permissions
+
+    async def _cleanup_game(
+        self, interaction: discord.Interaction
+    ) -> None:
+        """Clean up game resources after a game ends.
+
+        Args:
+            interaction: The Discord interaction.
+        """
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        players = await game.get_players()
+        for player in players:
+            if player.channel is not None:
+                await player.channel.delete()
+            await player.delete()
+        if game.board is not None:
+            await game.board.delete()
+        if game.category is not None:
+            await game.category.delete()
+        await game.delete()
 
 
 async def setup(bot: commands.Bot) -> None:

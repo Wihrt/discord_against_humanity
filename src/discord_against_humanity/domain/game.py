@@ -499,8 +499,7 @@ class MongoGame(MongoDocument):
         await self.save()
 
         await self.board.send(  # type: ignore[union-attr]
-            f"Time to vote! Vote in your private channel by using "
-            f"`{self._bot.command_prefix}vote`"
+            "Time to vote! Vote in your private channel by using `/vote`"
         )
 
         number_of_answers = await self.get_players_answers()
@@ -518,8 +517,7 @@ class MongoGame(MongoDocument):
         await self.save()
 
         await self.board.send(  # type: ignore[union-attr]
-            f"Time for tsar to decide! Vote in your private channel by using "
-            f"`{self._bot.command_prefix}tsar`"
+            "Time for tsar to decide! Vote in your private channel by using `/tsar`"
         )
 
         tsar_answer = await self.get_tsar_answer()
