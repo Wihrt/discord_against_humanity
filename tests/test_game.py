@@ -1,0 +1,400 @@
+"""Tests for MongoGame."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from bson.objectid import ObjectId
+from discord import CategoryChannel, Guild, TextChannel
+
+from discord_against_humanity.domain.game import MongoGame
+
+
+@pytest.fixture
+def game(mock_mongo_client, mock_bot):
+    """Create a MongoGame with default values set."""
+    g = MongoGame(mock_mongo_client)
+    g._bot = mock_bot
+    g._set_default_values()
+    return g
+
+
+class TestGameProperties:
+    """Tests for MongoGame property getters and setters."""
+
+    def test_guild_none_when_not_found(self, game):
+        game._document["guild"] = 999
+        game._bot.get_guild.return_value = None
+        assert game.guild is None
+
+    def test_guild_returns_guild(self, game, mock_guild):
+        game._document["guild"] = mock_guild.id
+        game._bot.get_guild.return_value = mock_guild
+        assert game.guild is mock_guild
+
+    def test_guild_setter(self, game, mock_guild):
+        game.guild = mock_guild
+        assert game._document["guild"] == mock_guild.id
+
+    def test_guild_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.guild = "not a guild"
+
+    def test_category_none_when_not_found(self, game, mock_guild):
+        game._bot.get_guild.return_value = mock_guild
+        game._document["guild"] = mock_guild.id
+        mock_guild.get_channel.return_value = None
+        assert game.category is None
+
+    def test_category_returns_channel(self, game, mock_guild, mock_category_channel):
+        game._bot.get_guild.return_value = mock_guild
+        game._document["guild"] = mock_guild.id
+        game._document["category"] = mock_category_channel.id
+        mock_guild.get_channel.return_value = mock_category_channel
+        assert game.category is mock_category_channel
+
+    def test_category_setter(self, game, mock_category_channel):
+        game.category = mock_category_channel
+        assert game._document["category"] == mock_category_channel.id
+
+    def test_category_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.category = "not a category"
+
+    def test_board_none_when_not_found(self, game, mock_guild):
+        game._bot.get_guild.return_value = mock_guild
+        game._document["guild"] = mock_guild.id
+        mock_guild.get_channel.return_value = None
+        assert game.board is None
+
+    def test_board_returns_channel(self, game, mock_guild, mock_text_channel):
+        game._bot.get_guild.return_value = mock_guild
+        game._document["guild"] = mock_guild.id
+        game._document["board"] = mock_text_channel.id
+        mock_guild.get_channel.return_value = mock_text_channel
+        assert game.board is mock_text_channel
+
+    def test_board_setter(self, game, mock_text_channel):
+        game.board = mock_text_channel
+        assert game._document["board"] == mock_text_channel.id
+
+    def test_board_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.board = "not a channel"
+
+    def test_points_default(self, game):
+        assert game.points == 5
+
+    def test_points_setter(self, game):
+        game.points = 10
+        assert game.points == 10
+
+    def test_points_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.points = "ten"
+
+    def test_playing_default(self, game):
+        assert game.playing is False
+
+    def test_playing_setter(self, game):
+        game.playing = True
+        assert game.playing is True
+
+    def test_playing_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.playing = "yes"
+
+    def test_voting_default(self, game):
+        assert game.voting == "nobody"
+
+    def test_voting_setter_valid(self, game):
+        for val in ("players", "tsar", "nobody"):
+            game.voting = val
+            assert game.voting == val
+
+    def test_voting_setter_rejects_wrong_type(self, game):
+        with pytest.raises(TypeError):
+            game.voting = 123
+
+    def test_voting_setter_rejects_invalid_value(self, game):
+        with pytest.raises(ValueError, match="Wrong value for voting"):
+            game.voting = "invalid"
+
+    def test_players_id_default(self, game):
+        assert game.players_id == []
+
+    def test_players_id_none_when_key_missing(self, mock_mongo_client, mock_bot):
+        g = MongoGame(mock_mongo_client)
+        g._bot = mock_bot
+        assert g.players_id is None
+
+    def test_black_cards_id_default(self, game):
+        assert game.black_cards_id == []
+
+    def test_white_cards_id_default(self, game):
+        assert game.white_cards_id == []
+
+    def test_tsar_id_default(self, game):
+        assert game.tsar_id == 0
+
+
+class TestGameCreate:
+    """Tests for MongoGame.create()."""
+
+    async def test_create_sets_defaults(self, mock_bot, mock_mongo_client, mock_guild):
+        mock_col = mock_mongo_client["cards_against_humanity"]["games"]
+        mock_col.find_one = AsyncMock(return_value=None)
+
+        game = await MongoGame.create(mock_bot, mock_mongo_client, mock_guild)
+        assert game.points == 5
+        assert game.playing is False
+        assert game.voting == "nobody"
+
+    async def test_create_loads_existing_game(
+        self, mock_bot, mock_mongo_client, mock_guild
+    ):
+        existing_doc = {
+            "_id": ObjectId(),
+            "guild": mock_guild.id,
+            "category": 0,
+            "board": 0,
+            "players": [ObjectId()],
+            "black_cards": [],
+            "white_cards": [],
+            "points": 10,
+            "playing": True,
+            "voting": "players",
+            "results": [],
+            "tsar": 0,
+        }
+        mock_col = mock_mongo_client["cards_against_humanity"]["games"]
+        mock_col.find_one = AsyncMock(return_value=existing_doc)
+
+        game = await MongoGame.create(mock_bot, mock_mongo_client, mock_guild)
+        assert game.points == 10
+        assert game.playing is True
+        assert game.voting == "players"
+
+
+class TestGameMethods:
+    """Tests for MongoGame methods."""
+
+    async def test_add_player_type_check(self, game):
+        with pytest.raises(TypeError, match="Wrong type for player"):
+            await game.add_player("not a player")
+
+    async def test_delete_player_type_check(self, game):
+        with pytest.raises(TypeError, match="Wrong type for player"):
+            await game.delete_player("not a player")
+
+    async def test_add_player(self, game, mock_bot, mock_mongo_client):
+        from discord_against_humanity.domain.player import MongoPlayer
+
+        player = MongoPlayer(mock_mongo_client)
+        player._bot = mock_bot
+        player._set_default_values()
+        player._document["_id"] = ObjectId()
+
+        # Mock save behavior
+        game._collection.insert_one = AsyncMock(
+            return_value=MagicMock(inserted_id=ObjectId())
+        )
+        game._collection.find_one = AsyncMock(return_value=game._document)
+        game._collection.find_one_and_replace = AsyncMock(
+            return_value=game._document
+        )
+
+        await game.add_player(player)
+
+        assert player.document_id in game._document["players"]
+
+    async def test_delete_player(self, game, mock_bot, mock_mongo_client):
+        from discord_against_humanity.domain.player import MongoPlayer
+
+        game._document["_id"] = ObjectId()
+
+        player = MongoPlayer(mock_mongo_client)
+        player._bot = mock_bot
+        player._set_default_values()
+        pid = ObjectId()
+        player._document["_id"] = pid
+        game._document["players"].append(pid)
+
+        game._collection.find_one_and_replace = AsyncMock(
+            return_value=game._document
+        )
+        game._collection.find_one = AsyncMock(return_value=game._document)
+
+        await game.delete_player(player)
+
+        assert pid not in game._document["players"]
+
+    async def test_get_players_answers_counts_non_tsar(self, game, mock_bot, mock_mongo_client):
+        tsar_id = ObjectId()
+        player1_id = ObjectId()
+        player2_id = ObjectId()
+        game._document["players"] = [tsar_id, player1_id, player2_id]
+        game._document["tsar"] = tsar_id
+
+        # Patch MongoPlayer.create to return mock players
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            if doc_id == player1_id:
+                p._document["answers"] = [ObjectId()]
+            # player2 has no answers (empty list)
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            count = await game.get_players_answers()
+            assert count == 1
+
+    async def test_get_players_score(self, game, mock_bot, mock_mongo_client):
+        p1_id = ObjectId()
+        p2_id = ObjectId()
+        game._document["players"] = [p1_id, p2_id]
+
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            if doc_id == p1_id:
+                p._document["score"] = 3
+            else:
+                p._document["score"] = 1
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            scores = await game.get_players_score()
+            assert len(scores) == 2
+            score_values = [s[1] for s in scores]
+            assert 3 in score_values
+            assert 1 in score_values
+
+    async def test_is_points_max_false(self, game, mock_bot, mock_mongo_client):
+        p1_id = ObjectId()
+        game._document["players"] = [p1_id]
+        game._document["points"] = 5
+
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            p._document["score"] = 2
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            result = await game.is_points_max()
+            assert result is False
+
+    async def test_is_points_max_true(self, game, mock_bot, mock_mongo_client):
+        p1_id = ObjectId()
+        game._document["players"] = [p1_id]
+        game._document["points"] = 5
+
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            p._document["score"] = 5
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            result = await game.is_points_max()
+            assert result is True
+
+    async def test_set_random_tsar(self, game):
+        game._document["_id"] = ObjectId()
+        ids = [ObjectId(), ObjectId(), ObjectId()]
+        game._document["players"] = ids
+        game._collection.find_one_and_replace = AsyncMock(
+            return_value=game._document
+        )
+        game._collection.find_one = AsyncMock(return_value=game._document)
+
+        await game.set_random_tsar()
+
+        assert game._document["tsar"] in ids
+
+    async def test_get_tsar_answer_true(self, game, mock_bot, mock_mongo_client):
+        tsar_id = ObjectId()
+        game._document["tsar"] = tsar_id
+
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            p._document["tsar_choice"] = 2
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            result = await game.get_tsar_answer()
+            assert result is True
+
+    async def test_get_tsar_answer_false(self, game, mock_bot, mock_mongo_client):
+        tsar_id = ObjectId()
+        game._document["tsar"] = tsar_id
+
+        async def fake_create(bot, client, doc_id):
+            from discord_against_humanity.domain.player import MongoPlayer
+
+            p = MongoPlayer(client)
+            p._bot = bot
+            p._set_default_values()
+            p._document["_id"] = doc_id
+            p._document["tsar_choice"] = 0
+            return p
+
+        with patch(
+            "discord_against_humanity.domain.game.MongoPlayer.create",
+            side_effect=fake_create,
+        ):
+            result = await game.get_tsar_answer()
+            assert result is False
+
+
+class TestGameDefaultValues:
+    """Tests for _set_default_values()."""
+
+    def test_default_values(self, game):
+        assert game._document["guild"] == 0
+        assert game._document["category"] == 0
+        assert game._document["board"] == 0
+        assert game._document["players"] == []
+        assert game._document["black_cards"] == []
+        assert game._document["white_cards"] == []
+        assert game._document["points"] == 5
+        assert game._document["playing"] is False
+        assert game._document["voting"] == "nobody"
+        assert game._document["results"] == []
+        assert game._document["tsar"] == 0
