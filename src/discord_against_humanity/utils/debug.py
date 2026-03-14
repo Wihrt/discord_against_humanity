@@ -21,18 +21,16 @@ def async_log_event(func: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         logger.debug(
-            "Calling %s.%s, Args %s, Kwargs %s",
-            getattr(func, "__qualname__", func.__name__),
-            func.__name__,
+            "Calling %s, Args %s, Kwargs %s",
+            func.__qualname__,
             args,
             kwargs,
         )
         result = await func(*args, **kwargs)
         if result is not None:
             logger.debug(
-                "Result %s.%s: %s",
-                getattr(func, "__qualname__", func.__name__),
-                func.__name__,
+                "Result %s: %s",
+                func.__qualname__,
                 result,
             )
         return result

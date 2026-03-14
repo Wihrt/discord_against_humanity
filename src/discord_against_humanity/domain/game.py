@@ -480,7 +480,7 @@ class MongoGame(MongoDocument):
 
         proposals = ""
         for index, value in enumerate(self._document["results"]):
-            proposals += f"{index + 1}. {value[1]}"
+            proposals += f"{index + 1}. {value[1]}\n"
         message = create_embed(
             {
                 "fields": {
@@ -545,5 +545,5 @@ class MongoGame(MongoDocument):
         self._document["tsar"] = player_id
         await self.save()
         await self.board.send(  # type: ignore[union-attr]
-            f"{player.user.mention} have won this round!"
+            f"{player.user.mention} has won this round!"
         )

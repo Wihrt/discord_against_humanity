@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-discord-against-humanity = "discord_against_humanity.__main__:main"
+discord-against-humanity = "discord_against_humanity.bot:main"
 
 [tool.ruff]
 target-version = "py312"
