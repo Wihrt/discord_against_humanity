@@ -17,6 +17,9 @@ from discord_against_humanity.utils.embed import create_embed
 
 logger = logging.getLogger(__name__)
 
+_MAX_DRAW_ATTEMPTS = 200
+_POLL_INTERVAL = 5
+
 
 class MongoGame(MongoDocument):
     """MongoDB document class for a Cards Against Humanity game."""
@@ -275,7 +278,7 @@ class MongoGame(MongoDocument):
         Args:
             guild: The guild ID to search for.
         """
-        document = await self._collection.find_one({"guild": guild})
+        document = await self._repo.find_one({"guild": guild})
         if document:
             self._document = document
 
@@ -293,6 +296,11 @@ class MongoGame(MongoDocument):
         self._document["results"] = []
         self._document["tsar"] = 0
 
+    async def _reload(self) -> None:
+        """Reload the game state from MongoDB."""
+        if self.document_id:
+            await self.get(self.document_id)
+
     # Public methods
     # -------------------------------------------------------------------------
 
@@ -305,7 +313,9 @@ class MongoGame(MongoDocument):
         """
         players: list[MongoPlayer] = []
         for player_id in self.players_id:  # type: ignore[union-attr]
-            player = await MongoPlayer.create(self._bot, self._client, player_id)
+            player = await MongoPlayer.create(
+                self._bot, self._client, player_id
+            )
             players.append(player)
         return players
 
@@ -384,7 +394,11 @@ class MongoGame(MongoDocument):
         fields: list[dict[str, Any]] = []
         for player, score in scores:
             fields.append(
-                {"name": player.user.display_name, "value": score, "inline": True}
+                {
+                    "name": player.user.display_name,
+                    "value": str(score or 0),
+                    "inline": True,
+                }
             )
         message = create_embed({"title": "Score", "fields": fields})
         await self.board.send(embed=message)  # type: ignore[union-attr]
@@ -397,7 +411,9 @@ class MongoGame(MongoDocument):
             The most recently drawn MongoBlackCard.
         """
         black_card_id = self.black_cards_id[-1]  # type: ignore[index]
-        black_card = await MongoBlackCard.create(self._client, black_card_id)
+        black_card = await MongoBlackCard.create(
+            self._client, black_card_id
+        )
         return black_card
 
     @async_log_event
@@ -406,13 +422,33 @@ class MongoGame(MongoDocument):
 
         Returns:
             A Discord Embed with the black card question.
+
+        Raises:
+            RuntimeError: If no new card can be drawn after max attempts.
         """
-        query = [{"$sample": {"size": 1}}]
+        attempts = 0
         card_number = len(self.black_cards_id)  # type: ignore[arg-type]
         while len(self.black_cards_id) == card_number:  # type: ignore[arg-type]
-            async for document in self._client[self._DATABASE]["black_cards"].aggregate(
-                query
-            ):
+            attempts += 1
+            if attempts > _MAX_DRAW_ATTEMPTS:
+                raise RuntimeError(
+                    "Could not draw a new black card: "
+                    "deck may be exhausted"
+                )
+            results = await self._repo.aggregate(
+                [{"$sample": {"size": 1}}]
+            )
+            # Use the black_cards collection specifically
+            bc_repo = type(self._repo)(
+                self._client,
+                self._DATABASE,
+                "black_cards",
+            ) if not hasattr(self, "_bc_repo") else self._bc_repo
+            self._bc_repo = bc_repo  # type: ignore[attr-defined]
+            results = await bc_repo.aggregate(
+                [{"$sample": {"size": 1}}]
+            )
+            for document in results:
                 if document["_id"] not in self.black_cards_id:  # type: ignore[operator]
                     self._document["black_cards"].append(document["_id"])
         await self.save()
@@ -433,13 +469,21 @@ class MongoGame(MongoDocument):
         Returns:
             The tsar MongoPlayer instance.
         """
-        player = await MongoPlayer.create(self._bot, self._client, self.tsar_id)
+        player = await MongoPlayer.create(
+            self._bot, self._client, self.tsar_id
+        )
         return player
 
     @async_log_event
     async def set_random_tsar(self) -> None:
-        """Set a new random tsar from the player list."""
-        self._document["tsar"] = sample(self.players_id, 1)[0]  # type: ignore[arg-type]
+        """Set a new random tsar from the player list.
+
+        Does nothing if there are no players.
+        """
+        if not self.players_id:
+            logger.warning("Cannot set tsar: no players in game")
+            return
+        self._document["tsar"] = sample(self.players_id, 1)[0]
         await self.save()
 
     @async_log_event
@@ -469,7 +513,9 @@ class MongoGame(MongoDocument):
                 answers: list[str] = []
                 player_answers = await player.get_answers()
                 for answer in player_answers:
-                    self._document["white_cards"].append(answer.document_id)
+                    self._document["white_cards"].append(
+                        answer.document_id
+                    )
                     answers.append(answer.text)
                 result = black_card.text.format(*answers)
                 results.append([player.document_id, result])
@@ -494,7 +540,10 @@ class MongoGame(MongoDocument):
 
     @async_log_event
     async def wait_for_players_answers(self) -> None:
-        """Wait for all non-tsar players to vote."""
+        """Wait for all non-tsar players to vote.
+
+        Exits early if the game is stopped.
+        """
         self.voting = "players"
         await self.save()
 
@@ -504,7 +553,10 @@ class MongoGame(MongoDocument):
 
         number_of_answers = await self.get_players_answers()
         while number_of_answers != len(self.players_id) - 1:  # type: ignore[arg-type]
-            await sleep(5)
+            await sleep(_POLL_INTERVAL)
+            await self._reload()
+            if not self.playing:
+                break
             number_of_answers = await self.get_players_answers()
 
         self.voting = "nobody"
@@ -512,17 +564,24 @@ class MongoGame(MongoDocument):
 
     @async_log_event
     async def wait_for_tsar_answer(self) -> None:
-        """Wait for the tsar to vote."""
+        """Wait for the tsar to vote.
+
+        Exits early if the game is stopped.
+        """
         self.voting = "tsar"
         await self.save()
 
         await self.board.send(  # type: ignore[union-attr]
-            "Time for tsar to decide! Vote in your private channel by using `/tsar`"
+            "Time for tsar to decide! Vote in your private channel "
+            "by using `/tsar`"
         )
 
         tsar_answer = await self.get_tsar_answer()
         while not tsar_answer:
-            await sleep(5)
+            await sleep(_POLL_INTERVAL)
+            await self._reload()
+            if not self.playing:
+                break
             tsar_answer = await self.get_tsar_answer()
 
         self.voting = "nobody"
@@ -536,7 +595,9 @@ class MongoGame(MongoDocument):
         await tsar.delete_choice()
 
         player_id = self._document["results"][tsar_choice - 1][0]
-        player = await MongoPlayer.create(self._bot, self._client, player_id)
+        player = await MongoPlayer.create(
+            self._bot, self._client, player_id
+        )
         player.score += 1
         await player.save()
 

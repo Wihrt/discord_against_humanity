@@ -10,6 +10,8 @@ from discord_against_humanity.infrastructure.mongo import MongoDocument
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_PICK = 1
+
 
 class MongoBlackCard(MongoDocument):
     """Data class for a Black Card (question) MongoDB document."""
@@ -25,25 +27,23 @@ class MongoBlackCard(MongoDocument):
             The card text with blanks formatted for display, or None.
         """
         try:
+            pick = self.pick or _DEFAULT_PICK
             if "_" not in self._document["text"]:
                 return html2text(
-                    self._document["text"] + "**{}**. " * self.pick
+                    self._document["text"] + "**{}**. " * pick
                 )
             return html2text(self._document["text"].replace("_", "**{}**"))
         except KeyError:
             return None
 
     @property
-    def pick(self) -> int | None:
+    def pick(self) -> int:
         """Get the number of cards to pick.
 
         Returns:
-            The number of white cards a player must pick, or None.
+            The number of white cards a player must pick (defaults to 1).
         """
-        try:
-            return self._document["pick"]
-        except KeyError:
-            return None
+        return self._document.get("pick", _DEFAULT_PICK)
 
     @classmethod
     async def create(

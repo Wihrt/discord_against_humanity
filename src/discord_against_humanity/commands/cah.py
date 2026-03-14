@@ -183,7 +183,7 @@ class CardsAgainstHumanity(commands.Cog):
             guild=interaction.guild,
         )
         await game.delete_player(player)
-        if player.document_id == game.tsar_id:
+        if player.document_id == game.tsar_id and game.players_id:
             await game.set_random_tsar()
             tsar = await game.get_tsar()
             await game.board.send(  # type: ignore[union-attr]
@@ -230,6 +230,9 @@ class CardsAgainstHumanity(commands.Cog):
         await game.set_random_tsar()
         is_score_max = await game.is_points_max()
         while game.playing and not is_score_max:
+            await game.get(game.document_id)
+            if not game.playing:
+                break
             tsar = await game.get_tsar()
             await game.board.send(  # type: ignore[union-attr]
                 f"{tsar.user.mention}! You're the tsar!"

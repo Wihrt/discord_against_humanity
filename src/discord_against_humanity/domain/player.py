@@ -242,7 +242,7 @@ class MongoPlayer(MongoDocument):
         """
         if not isinstance(user, Member):
             raise TypeError("Wrong type for user")
-        document = await self._collection.find_one({"user": user.id})
+        document = await self._repo.find_one({"user": user.id})
         if document:
             self._document = document
 
@@ -276,16 +276,40 @@ class MongoPlayer(MongoDocument):
     async def draw_white_cards(self, used_cards: list[Any]) -> None:
         """Draw white cards until the player has a full hand.
 
+        Prevents drawing duplicates already in hand or in
+        the global used-cards list.  Stops after a maximum number
+        of attempts to avoid an infinite loop when the deck is
+        nearly exhausted.
+
         Args:
             used_cards: List of ObjectIds for already-used cards.
         """
-        query = [{"$sample": {"size": 1}}]
+        from discord_against_humanity.infrastructure.mongo import (
+            MongoRepository,
+        )
+
+        max_attempts = 200
+        attempts = 0
+        wc_repo = MongoRepository(
+            self._client, self._DATABASE, "white_cards"
+        )
         while len(self.white_cards_id) != _WHITE_CARDS_NUMBER:  # type: ignore[arg-type]
-            async for document in self._client[self._DATABASE]["white_cards"].aggregate(
-                query
-            ):
-                if document["_id"] not in used_cards:
-                    self._document["white_cards"].append(document["_id"])
+            attempts += 1
+            if attempts > max_attempts:
+                logger.warning(
+                    "Could not fill hand: deck may be exhausted"
+                )
+                break
+            results = await wc_repo.aggregate(
+                [{"$sample": {"size": 1}}]
+            )
+            for document in results:
+                card_id = document["_id"]
+                if (
+                    card_id not in used_cards
+                    and card_id not in self.white_cards_id  # type: ignore[operator]
+                ):
+                    self._document["white_cards"].append(card_id)
         await self.save()
 
         proposals = ""

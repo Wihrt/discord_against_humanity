@@ -40,9 +40,9 @@ class TestMongoBlackCard:
         assert result is not None
         assert "<b>" not in result
 
-    def test_pick_none_when_empty(self, mock_mongo_client):
+    def test_pick_defaults_to_one_when_empty(self, mock_mongo_client):
         card = MongoBlackCard(mock_mongo_client)
-        assert card.pick is None
+        assert card.pick == 1
 
     def test_pick_returns_value(self, mock_mongo_client):
         card = MongoBlackCard(mock_mongo_client)

@@ -6,12 +6,26 @@ import pytest
 from bson.objectid import ObjectId
 
 from discord_against_humanity.domain.game import MongoGame
+from discord_against_humanity.infrastructure.mongo import Repository
 
 
 @pytest.fixture
-def game(mock_mongo_client, mock_bot):
+def mock_repo():
+    """Create a mock Repository for game tests."""
+    repo = MagicMock(spec=Repository)
+    repo.find_by_id = AsyncMock(return_value=None)
+    repo.find_one = AsyncMock(return_value=None)
+    repo.insert = AsyncMock(return_value=ObjectId())
+    repo.replace = AsyncMock(return_value={})
+    repo.delete_by_id = AsyncMock()
+    repo.aggregate = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture
+def game(mock_mongo_client, mock_bot, mock_repo):
     """Create a MongoGame with default values set."""
-    g = MongoGame(mock_mongo_client)
+    g = MongoGame(mock_mongo_client, repository=mock_repo)
     g._bot = mock_bot
     g._set_default_values()
     return g
@@ -185,20 +199,18 @@ class TestGameMethods:
         with pytest.raises(TypeError, match="Wrong type for player"):
             await game.delete_player("not a player")
 
-    async def test_add_player(self, game, mock_bot, mock_mongo_client):
+    async def test_add_player(
+        self, game, mock_bot, mock_mongo_client, mock_repo
+    ):
         from discord_against_humanity.domain.player import MongoPlayer
 
-        player = MongoPlayer(mock_mongo_client)
+        player = MongoPlayer(mock_mongo_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
         player._document["_id"] = ObjectId()
 
-        # Mock save behavior
-        game._collection.insert_one = AsyncMock(
-            return_value=MagicMock(inserted_id=ObjectId())
-        )
-        game._collection.find_one = AsyncMock(return_value=game._document)
-        game._collection.find_one_and_replace = AsyncMock(
+        # Mock save -> replace returns updated document
+        game._repo.replace = AsyncMock(
             return_value=game._document
         )
 
@@ -206,22 +218,23 @@ class TestGameMethods:
 
         assert player.document_id in game._document["players"]
 
-    async def test_delete_player(self, game, mock_bot, mock_mongo_client):
+    async def test_delete_player(
+        self, game, mock_bot, mock_mongo_client, mock_repo
+    ):
         from discord_against_humanity.domain.player import MongoPlayer
 
         game._document["_id"] = ObjectId()
 
-        player = MongoPlayer(mock_mongo_client)
+        player = MongoPlayer(mock_mongo_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
         pid = ObjectId()
         player._document["_id"] = pid
         game._document["players"].append(pid)
 
-        game._collection.find_one_and_replace = AsyncMock(
+        game._repo.replace = AsyncMock(
             return_value=game._document
         )
-        game._collection.find_one = AsyncMock(return_value=game._document)
 
         await game.delete_player(player)
 
@@ -332,14 +345,19 @@ class TestGameMethods:
         game._document["_id"] = ObjectId()
         ids = [ObjectId(), ObjectId(), ObjectId()]
         game._document["players"] = ids
-        game._collection.find_one_and_replace = AsyncMock(
+        game._repo.replace = AsyncMock(
             return_value=game._document
         )
-        game._collection.find_one = AsyncMock(return_value=game._document)
 
         await game.set_random_tsar()
 
         assert game._document["tsar"] in ids
+
+    async def test_set_random_tsar_empty_players(self, game):
+        """Guard: set_random_tsar does nothing with no players."""
+        game._document["players"] = []
+        await game.set_random_tsar()
+        assert game._document["tsar"] == 0
 
     async def test_get_tsar_answer_true(self, game, mock_bot, mock_mongo_client):
         tsar_id = ObjectId()
