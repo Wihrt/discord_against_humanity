@@ -1,0 +1,3 @@
+# Database;Collection;JSON File;JSON Array
+cards_against_humanity;black_cards;/docker-entrypoint-initdb.d/seed/black_cards.json;true
+cards_against_humanity;white_cards;/docker-entrypoint-initdb.d/seed/white_cards.json;true

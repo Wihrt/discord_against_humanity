@@ -32,6 +32,7 @@ Use `/reminder` to display the game rules at any time.
 - MongoDB ≥ 8
 - A [Discord Bot Token](https://discord.com/developers/applications)
 - [uv](https://docs.astral.sh/uv/) (for local development)
+- [Task](https://taskfile.dev/) (optional — task runner)
 
 ## Local Development
 
@@ -56,6 +57,74 @@ export MONGO_PORT="27017"
 uv run discord-against-humanity
 ```
 
+### Using the Taskfile
+
+If you have [Task](https://taskfile.dev/) installed you can use the provided
+`Taskfile.yml` instead of remembering individual commands:
+
+```bash
+task sync          # install / update dependencies
+task lint          # run ruff
+task test          # run pytest
+task typecheck     # run mypy
+task check         # run all quality checks
+task docker:build  # build the Docker image
+task docker:up     # start the Docker Compose stack
+task docker:down   # stop the stack
+task run           # start the bot locally
+```
+
+Run `task` (no arguments) to see the full list of available tasks.
+
+## Seeding the Card Database
+
+The bot requires **black cards** (questions) and **white cards** (answers) to
+be present in MongoDB before a game can start.
+
+### 1. Obtain a CAH JSON file
+
+Get a Cards Against Humanity JSON export (e.g. from
+[crhallberg/json-against-humanity](https://github.com/crhallberg/json-against-humanity))
+and save it as `cah.json` in the repository root.
+
+### 2. Convert to MongoDB seed files
+
+```bash
+# Writes mongo/seed/black_cards.json and mongo/seed/white_cards.json
+python scripts/convert_cah.py cah.json --output-dir mongo/seed
+
+# Or via the Taskfile
+task seed:convert -- cah.json --output-dir mongo/seed
+```
+
+### 3. Import into MongoDB
+
+**Docker Compose (automatic):** The `docker-compose.yml` mounts `mongo/` into
+the MongoDB container's `/docker-entrypoint-initdb.d/` directory.  On a fresh
+volume the init script runs `mongoimport` automatically.
+
+```bash
+# First time — seed data is imported automatically
+docker compose up -d
+```
+
+> **Note:** MongoDB only runs init scripts when the data volume is empty. To
+> re-seed, remove the volume first: `docker compose down -v && docker compose up -d`.
+
+**Manual import:**
+
+```bash
+mongoimport --db cards_against_humanity \
+            --collection black_cards \
+            --file mongo/seed/black_cards.json \
+            --jsonArray
+
+mongoimport --db cards_against_humanity \
+            --collection white_cards \
+            --file mongo/seed/white_cards.json \
+            --jsonArray
+```
+
 ## Deploy with Docker Compose
 
 1. Create a `.env` file:
@@ -64,7 +133,9 @@ uv run discord-against-humanity
    DISCORD_TOKEN=your-bot-token-here
    ```
 
-2. Start the stack:
+2. Make sure `mongo/seed/` contains the card data (see [Seeding the Card Database](#seeding-the-card-database)).
+
+3. Start the stack:
 
    ```bash
    docker compose up -d
@@ -72,9 +143,9 @@ uv run discord-against-humanity
 
    This starts:
    - **bot** — the Discord bot (Python 3.13, non-root)
-   - **mongo** — MongoDB 8
+   - **mongo** — MongoDB 8 (seeded with card data on first start)
 
-3. Stop:
+4. Stop:
 
    ```bash
    docker compose down
@@ -139,10 +210,13 @@ helm install my-bot helm/discord-against-humanity \
 │   ├── commands/cah.py             # Slash command Cog
 │   ├── checks/game_checks.py      # Pre-command validation
 │   ├── domain/                     # Domain models (game, player, cards)
-│   ├── infrastructure/mongo.py     # MongoDB document base class
+│   ├── infrastructure/mongo.py     # Repository pattern & MongoDB base class
 │   └── utils/                      # Embed builder & debug decorator
 ├── tests/                          # Unit tests (pytest)
+├── scripts/convert_cah.py          # Card data converter
+├── mongo/                          # MongoDB seed scripts & data
 ├── helm/                           # Helm chart
+├── Taskfile.yml                    # Task runner configuration
 ├── Dockerfile                      # Multi-stage, non-root, uv-based
 ├── docker-compose.yml              # Local stack (bot + MongoDB 8)
 └── pyproject.toml                  # Project & tool configuration (uv)

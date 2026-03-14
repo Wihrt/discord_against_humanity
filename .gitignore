@@ -108,5 +108,5 @@ ENV/
 
 # Bot token file (legacy)
 bot/token.txt
-mongo/*.json
+mongo/seed/*.json
 ext/*.json

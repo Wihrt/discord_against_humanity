@@ -16,6 +16,10 @@ services:
       - internal
     volumes:
       - mongo-data:/data/db
+      # Seed scripts – executed on first start only
+      - ./mongo/mongo_init.sh:/docker-entrypoint-initdb.d/mongo_init.sh:ro
+      - ./mongo/imports.txt:/docker-entrypoint-initdb.d/imports.txt:ro
+      - ./mongo/seed:/docker-entrypoint-initdb.d/seed:ro
 
 networks:
   internal:
