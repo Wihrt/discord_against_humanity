@@ -83,9 +83,9 @@ be present in MongoDB before a game can start.
 
 ### 1. Obtain a CAH JSON file
 
-Get a Cards Against Humanity JSON export (e.g. from
-[crhallberg/json-against-humanity](https://github.com/crhallberg/json-against-humanity))
-and save it as `cah.json` in the repository root.
+You can download a ready-made Cards Against Humanity JSON file from
+**<https://crhallberg.com/cah/>** (select the packs you want and export as
+JSON).  Save the file as `cah.json` in the repository root.
 
 ### 2. Convert to MongoDB seed files
 

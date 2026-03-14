@@ -426,8 +426,15 @@ class MongoGame(MongoDocument):
         Raises:
             RuntimeError: If no new card can be drawn after max attempts.
         """
+        from discord_against_humanity.infrastructure.mongo import (
+            MongoRepository,
+        )
+
         attempts = 0
         card_number = len(self.black_cards_id)  # type: ignore[arg-type]
+        bc_repo = MongoRepository(
+            self._client, self._DATABASE, "black_cards"
+        )
         while len(self.black_cards_id) == card_number:  # type: ignore[arg-type]
             attempts += 1
             if attempts > _MAX_DRAW_ATTEMPTS:
@@ -435,22 +442,14 @@ class MongoGame(MongoDocument):
                     "Could not draw a new black card: "
                     "deck may be exhausted"
                 )
-            results = await self._repo.aggregate(
-                [{"$sample": {"size": 1}}]
-            )
-            # Use the black_cards collection specifically
-            bc_repo = type(self._repo)(
-                self._client,
-                self._DATABASE,
-                "black_cards",
-            ) if not hasattr(self, "_bc_repo") else self._bc_repo
-            self._bc_repo = bc_repo  # type: ignore[attr-defined]
             results = await bc_repo.aggregate(
                 [{"$sample": {"size": 1}}]
             )
             for document in results:
                 if document["_id"] not in self.black_cards_id:  # type: ignore[operator]
-                    self._document["black_cards"].append(document["_id"])
+                    self._document["black_cards"].append(
+                        document["_id"]
+                    )
         await self.save()
 
         black_card = await self.get_black_card()
