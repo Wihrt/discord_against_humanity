@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Convert a Cards Against Humanity JSON export to MongoDB-ready JSON files.
+"""Convert a Cards Against Humanity JSON export to seed-ready JSON files.
 
 Downloads the card data from a public source and writes two JSON files
-(``black_cards.json`` and ``white_cards.json``) that can be imported
-into MongoDB via ``mongoimport``.
+(``black_cards.json`` and ``white_cards.json``) that can be loaded
+into Valkey via the ``seed_valkey.py`` script.
 
 Usage::
 
-    python scripts/convert_cah.py [--output-dir mongo/seed]
+    python scripts/convert_cah.py [--output-dir seed]
 """
 
 from __future__ import annotations
@@ -80,8 +80,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-dir",
-        default="mongo/seed",
-        help="Directory to write output files (default: mongo/seed)",
+        default="seed",
+        help="Directory to write output files (default: seed)",
     )
     args = parser.parse_args()
     main(args.input_file, args.output_dir)

@@ -40,10 +40,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "discord-against-humanity.secretName" . }}
                   key: DISCORD_TOKEN
-            - name: MONGO_HOST
-              value: {{ .Values.mongodb.host | quote }}
-            - name: MONGO_PORT
-              value: {{ .Values.mongodb.port | quote }}
+            - name: VALKEY_HOST
+              value: {{ .Values.valkey.host | quote }}
+            - name: VALKEY_PORT
+              value: {{ .Values.valkey.port | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

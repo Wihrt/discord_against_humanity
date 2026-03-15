@@ -25,9 +25,9 @@ existingSecret: ""
 # Prefer using existingSecret for production deployments.
 discordToken: ""
 
-mongodb:
-  host: "mongo"
-  port: "27017"
+valkey:
+  host: "valkey"
+  port: "6379"
 
 resources:
   limits:

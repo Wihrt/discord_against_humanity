@@ -2,28 +2,37 @@ services:
   bot:
     build: .
     environment:
-      MONGO_HOST: "mongo"
-      MONGO_PORT: "27017"
+      VALKEY_HOST: "valkey"
+      VALKEY_PORT: "6379"
       DISCORD_TOKEN: "${DISCORD_TOKEN}"
     networks:
       - internal
     depends_on:
-      - mongo
+      seed:
+        condition: service_completed_successfully
 
-  mongo:
-    image: mongo:8
+  valkey:
+    image: valkey/valkey:8
     networks:
       - internal
     volumes:
-      - mongo-data:/data/db
-      # Seed scripts – executed on first start only
-      - ./mongo/mongo_init.sh:/docker-entrypoint-initdb.d/mongo_init.sh:ro
-      - ./mongo/imports.txt:/docker-entrypoint-initdb.d/imports.txt:ro
-      - ./mongo/seed:/docker-entrypoint-initdb.d/seed:ro
+      - valkey-data:/data
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed
+    environment:
+      VALKEY_HOST: "valkey"
+      VALKEY_PORT: "6379"
+    networks:
+      - internal
+    depends_on:
+      - valkey
 
 networks:
   internal:
     driver: bridge
 
 volumes:
-  mongo-data: {}
+  valkey-data: {}

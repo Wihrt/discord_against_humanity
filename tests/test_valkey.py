@@ -1,22 +1,21 @@
-"""Tests for the MongoDocument base class and Repository pattern."""
+"""Tests for the Document base class and Repository pattern."""
 
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
-from bson.objectid import ObjectId
 
-from discord_against_humanity.infrastructure.mongo import (
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import (
     DocumentNotFoundError,
-    MongoDocument,
-    MongoRepository,
     Repository,
 )
+from discord_against_humanity.ports.valkey import ValkeyRepository
 
 
-class ConcreteDocument(MongoDocument):
-    """Concrete subclass for testing the abstract MongoDocument."""
+class ConcreteDocument(Document):
+    """Concrete subclass for testing the abstract Document."""
 
-    _DATABASE = "test_db"
     _COLLECTION = "test_collection"
 
     @classmethod
@@ -30,17 +29,24 @@ def mock_repo():
     repo = MagicMock(spec=Repository)
     repo.find_by_id = AsyncMock(return_value=None)
     repo.find_one = AsyncMock(return_value=None)
-    repo.insert = AsyncMock(return_value=ObjectId())
+    repo.insert = AsyncMock(return_value=str(uuid4()))
     repo.replace = AsyncMock(return_value={})
     repo.delete_by_id = AsyncMock()
-    repo.aggregate = AsyncMock(return_value=[])
+    repo.random_member = AsyncMock(return_value=None)
+    repo.count = AsyncMock(return_value=0)
     return repo
 
 
 @pytest.fixture
-def doc(mock_mongo_client, mock_repo):
+def mock_factory(mock_repo):
+    """Create a mock RepositoryFactory."""
+    return MagicMock(side_effect=lambda _: mock_repo)
+
+
+@pytest.fixture
+def doc(mock_repo, mock_factory):
     """Create a ConcreteDocument with a mock repo."""
-    return ConcreteDocument(mock_mongo_client, repository=mock_repo)
+    return ConcreteDocument(repository=mock_repo, repo_factory=mock_factory)
 
 
 class TestDocumentId:
@@ -50,20 +56,20 @@ class TestDocumentId:
         assert doc.document_id is None
 
     def test_document_id_getter(self, doc):
-        oid = ObjectId()
-        doc._document["_id"] = oid
-        assert doc.document_id == oid
+        doc_id = str(uuid4())
+        doc._document["_id"] = doc_id
+        assert doc.document_id == doc_id
 
     def test_document_id_setter(self, doc):
-        oid = ObjectId()
-        doc.document_id = oid
-        assert doc._document["_id"] == oid
+        doc_id = str(uuid4())
+        doc.document_id = doc_id
+        assert doc._document["_id"] == doc_id
 
-    def test_document_id_setter_rejects_non_objectid(self, doc):
+    def test_document_id_setter_rejects_non_str(self, doc):
         with pytest.raises(
-            TypeError, match="document_id must be an ObjectId"
+            TypeError, match="document_id must be a str"
         ):
-            doc.document_id = "not-an-objectid"
+            doc.document_id = 12345
 
     def test_document_id_setter_rejects_int(self, doc):
         with pytest.raises(TypeError):
@@ -73,31 +79,17 @@ class TestDocumentId:
 class TestInit:
     """Tests for __init__ and class attributes."""
 
-    def test_database_and_collection(self):
-        assert ConcreteDocument._DATABASE == "test_db"
+    def test_collection(self):
         assert ConcreteDocument._COLLECTION == "test_collection"
 
-    def test_client_stored(self, doc, mock_mongo_client):
-        assert doc._client is mock_mongo_client
+    def test_repo_stored(self, doc, mock_repo):
+        assert doc._repo is mock_repo
 
     def test_empty_document(self, doc):
         assert doc._document == {}
 
-    def test_raises_if_database_not_set(self, mock_mongo_client):
-        class BadDoc(MongoDocument):
-            _DATABASE = ""
-            _COLLECTION = "col"
-
-            @classmethod
-            async def create(cls):
-                raise NotImplementedError
-
-        with pytest.raises(ValueError, match="must define"):
-            BadDoc(mock_mongo_client)
-
-    def test_raises_if_collection_not_set(self, mock_mongo_client):
-        class BadDoc(MongoDocument):
-            _DATABASE = "db"
+    def test_raises_if_collection_not_set(self, mock_repo, mock_factory):
+        class BadDoc(Document):
             _COLLECTION = ""
 
             @classmethod
@@ -105,11 +97,11 @@ class TestInit:
                 raise NotImplementedError
 
         with pytest.raises(ValueError, match="must define"):
-            BadDoc(mock_mongo_client)
+            BadDoc(repository=mock_repo, repo_factory=mock_factory)
 
-    def test_custom_repository_used(self, mock_mongo_client, mock_repo):
+    def test_custom_repository_used(self, mock_repo, mock_factory):
         doc = ConcreteDocument(
-            mock_mongo_client, repository=mock_repo
+            repository=mock_repo, repo_factory=mock_factory
         )
         assert doc._repo is mock_repo
 
@@ -122,17 +114,17 @@ class TestGet:
         mock_repo.find_by_id.assert_not_awaited()
 
     async def test_get_uses_current_id(self, doc, mock_repo):
-        oid = ObjectId()
-        doc._document["_id"] = oid
+        doc_id = str(uuid4())
+        doc._document["_id"] = doc_id
         mock_repo.find_by_id = AsyncMock(
-            return_value={"_id": oid, "data": "value"}
+            return_value={"_id": doc_id, "data": "value"}
         )
         await doc.get()
-        mock_repo.find_by_id.assert_awaited_once_with(oid)
+        mock_repo.find_by_id.assert_awaited_once_with(doc_id)
         assert doc._document["data"] == "value"
 
     async def test_get_with_explicit_id(self, doc, mock_repo):
-        other_id = ObjectId()
+        other_id = str(uuid4())
         mock_repo.find_by_id = AsyncMock(
             return_value={"_id": other_id, "key": "val"}
         )
@@ -143,10 +135,10 @@ class TestGet:
     async def test_get_leaves_document_unchanged_on_not_found(
         self, doc, mock_repo
     ):
-        oid = ObjectId()
-        doc._document = {"_id": oid, "existing": "data"}
+        doc_id = str(uuid4())
+        doc._document = {"_id": doc_id, "existing": "data"}
         mock_repo.find_by_id = AsyncMock(return_value=None)
-        await doc.get(oid)
+        await doc.get(doc_id)
         assert doc._document["existing"] == "data"
 
 
@@ -154,7 +146,7 @@ class TestSave:
     """Tests for the save() method."""
 
     async def test_save_insert_new_document(self, doc, mock_repo):
-        new_id = ObjectId()
+        new_id = str(uuid4())
         mock_repo.insert = AsyncMock(return_value=new_id)
         await doc.save()
         mock_repo.insert.assert_awaited_once()
@@ -163,14 +155,14 @@ class TestSave:
     async def test_save_replaces_existing_document(
         self, doc, mock_repo
     ):
-        oid = ObjectId()
-        doc.document_id = oid
+        doc_id = str(uuid4())
+        doc.document_id = doc_id
         doc._document["field"] = "updated"
-        replaced = {"_id": oid, "field": "updated"}
+        replaced = {"_id": doc_id, "field": "updated"}
         mock_repo.replace = AsyncMock(return_value=replaced)
         await doc.save()
         mock_repo.replace.assert_awaited_once_with(
-            oid, doc._document
+            doc_id, doc._document
         )
 
 
@@ -178,10 +170,10 @@ class TestDelete:
     """Tests for the delete() method."""
 
     async def test_delete_with_id(self, doc, mock_repo):
-        oid = ObjectId()
-        doc.document_id = oid
+        doc_id = str(uuid4())
+        doc.document_id = doc_id
         await doc.delete()
-        mock_repo.delete_by_id.assert_awaited_once_with(oid)
+        mock_repo.delete_by_id.assert_awaited_once_with(doc_id)
 
     async def test_delete_without_id_does_nothing(
         self, doc, mock_repo
@@ -198,42 +190,38 @@ class TestDocumentNotFoundError:
             raise DocumentNotFoundError("gone")
 
 
-class TestMongoRepository:
-    """Tests for MongoRepository concrete implementation."""
+class TestValkeyRepository:
+    """Tests for ValkeyRepository concrete implementation."""
 
     @pytest.fixture
-    def repo(self, mock_mongo_client):
-        return MongoRepository(mock_mongo_client, "test_db", "test_col")
+    def repo(self, mock_valkey_client):
+        return ValkeyRepository(mock_valkey_client, "test_col")
 
     async def test_find_by_id(self, repo):
-        oid = ObjectId()
-        repo._collection.find_one = AsyncMock(
-            return_value={"_id": oid}
-        )
-        result = await repo.find_by_id(oid)
-        assert result["_id"] == oid
+        import json
 
-    async def test_find_one(self, repo):
-        repo._collection.find_one = AsyncMock(
-            return_value={"guild": 123}
+        doc_id = str(uuid4())
+        repo._client.get = AsyncMock(
+            return_value=json.dumps({"field": "value"})
         )
-        result = await repo.find_one({"guild": 123})
-        assert result["guild"] == 123
+        result = await repo.find_by_id(doc_id)
+        assert result["_id"] == doc_id
+        assert result["field"] == "value"
+
+    async def test_find_by_id_returns_none(self, repo):
+        repo._client.get = AsyncMock(return_value=None)
+        result = await repo.find_by_id(str(uuid4()))
+        assert result is None
 
     async def test_insert(self, repo):
-        oid = ObjectId()
-        mock_result = MagicMock()
-        mock_result.inserted_id = oid
-        repo._collection.insert_one = AsyncMock(
-            return_value=mock_result
-        )
         result = await repo.insert({"data": "test"})
-        assert result == oid
+        assert isinstance(result, str)
+        repo._client.set.assert_awaited()
+        repo._client.sadd.assert_awaited()
 
     async def test_delete_by_id(self, repo):
-        oid = ObjectId()
-        repo._collection.delete_one = AsyncMock()
-        await repo.delete_by_id(oid)
-        repo._collection.delete_one.assert_awaited_once_with(
-            {"_id": oid}
-        )
+        doc_id = str(uuid4())
+        repo._client.get = AsyncMock(return_value=None)
+        await repo.delete_by_id(doc_id)
+        repo._client.delete.assert_awaited()
+        repo._client.srem.assert_awaited()

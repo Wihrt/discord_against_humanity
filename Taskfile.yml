@@ -92,7 +92,7 @@ tasks:
   # ---- Database seed ---------------------------------------------------------
 
   seed:convert:
-    desc: Convert a CAH JSON file into MongoDB seed files
+    desc: Convert a CAH JSON file into Valkey seed files
     cmds:
       - uv run python scripts/convert_cah.py {{.CLI_ARGS}}
 
@@ -111,7 +111,7 @@ tasks:
   # ---- Run -------------------------------------------------------------------
 
   run:
-    desc: Start the bot locally (requires DISCORD_TOKEN and MongoDB)
+    desc: Start the bot locally (requires DISCORD_TOKEN and Valkey)
     deps: [sync]
     cmds:
       - uv run discord-against-humanity

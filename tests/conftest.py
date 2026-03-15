@@ -1,30 +1,62 @@
 """Shared fixtures for Discord Against Humanity tests."""
 
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from uuid import uuid4
 
 import pytest
-from bson.objectid import ObjectId
+
+from discord_against_humanity.ports.repository import Repository
 
 
 @pytest.fixture
-def mock_mongo_client():
-    """Create a mock Motor async MongoDB client.
+def mock_valkey_client():
+    """Create a mock async Valkey client.
 
-    The motor client is accessed as client[database][collection],
-    so we mock nested __getitem__ calls to return an AsyncMock collection.
+    The Valkey client is used via get/set/sadd/srandmember/etc.,
+    so we mock the relevant methods.
     """
     client = MagicMock()
-    collection = AsyncMock()
-    database = MagicMock()
-    database.__getitem__ = MagicMock(return_value=collection)
-    client.__getitem__ = MagicMock(return_value=database)
+    client.get = AsyncMock(return_value=None)
+    client.set = AsyncMock()
+    client.delete = AsyncMock()
+    client.exists = AsyncMock(return_value=True)
+    client.sadd = AsyncMock()
+    client.srem = AsyncMock()
+    client.srandmember = AsyncMock(return_value=None)
+    client.scard = AsyncMock(return_value=0)
     return client
 
 
+def _create_mock_repo():
+    """Build a fresh mock Repository."""
+    repo = MagicMock(spec=Repository)
+    repo.find_by_id = AsyncMock(return_value=None)
+    repo.find_one = AsyncMock(return_value=None)
+    repo.insert = AsyncMock(return_value=str(uuid4()))
+    repo.replace = AsyncMock(return_value={})
+    repo.delete_by_id = AsyncMock()
+    repo.random_member = AsyncMock(return_value=None)
+    repo.count = AsyncMock(return_value=0)
+    return repo
+
+
 @pytest.fixture
-def mock_collection(mock_mongo_client):
-    """Return the mock collection from the mock client."""
-    return mock_mongo_client["any_db"]["any_collection"]
+def mock_repo():
+    """Create a mock Repository."""
+    return _create_mock_repo()
+
+
+@pytest.fixture
+def mock_repo_factory():
+    """Create a mock RepositoryFactory.
+
+    Returns the same mock Repository for any collection name
+    so tests can inspect it easily.
+    """
+    repo = _create_mock_repo()
+    factory = MagicMock(side_effect=lambda _collection: repo)
+    factory._repo = repo  # expose for test assertions
+    return factory
 
 
 @pytest.fixture
@@ -83,12 +115,12 @@ def mock_category_channel():
 
 
 @pytest.fixture
-def sample_object_id():
-    """Return a sample ObjectId for testing."""
-    return ObjectId()
+def sample_doc_id():
+    """Return a sample document ID for testing."""
+    return str(uuid4())
 
 
 @pytest.fixture
-def sample_object_ids():
-    """Return a list of sample ObjectIds for testing."""
-    return [ObjectId() for _ in range(5)]
+def sample_doc_ids():
+    """Return a list of sample document IDs for testing."""
+    return [str(uuid4()) for _ in range(5)]

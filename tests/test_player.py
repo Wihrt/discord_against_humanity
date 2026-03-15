@@ -1,12 +1,12 @@
-"""Tests for MongoPlayer."""
+"""Tests for Player."""
 
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
-from bson.objectid import ObjectId
 
-from discord_against_humanity.domain.player import MongoPlayer
-from discord_against_humanity.infrastructure.mongo import Repository
+from discord_against_humanity.domain.player import Player
+from discord_against_humanity.ports.repository import Repository
 
 
 @pytest.fixture
@@ -15,24 +15,25 @@ def mock_repo():
     repo = MagicMock(spec=Repository)
     repo.find_by_id = AsyncMock(return_value=None)
     repo.find_one = AsyncMock(return_value=None)
-    repo.insert = AsyncMock(return_value=ObjectId())
+    repo.insert = AsyncMock(return_value=str(uuid4()))
     repo.replace = AsyncMock(return_value={})
     repo.delete_by_id = AsyncMock()
-    repo.aggregate = AsyncMock(return_value=[])
+    repo.random_member = AsyncMock(return_value=None)
+    repo.count = AsyncMock(return_value=0)
     return repo
 
 
 @pytest.fixture
-def player(mock_mongo_client, mock_bot, mock_repo):
-    """Create a MongoPlayer with default values set."""
-    p = MongoPlayer(mock_mongo_client, repository=mock_repo)
+def player(mock_bot, mock_repo, mock_repo_factory):
+    """Create a Player with default values set."""
+    p = Player(repository=mock_repo, repo_factory=mock_repo_factory)
     p._bot = mock_bot
     p._set_default_values()
     return p
 
 
 class TestPlayerProperties:
-    """Tests for MongoPlayer property getters and setters."""
+    """Tests for Player property getters and setters."""
 
     def test_guild_none_when_not_found(self, player):
         player._document["guild"] = 999
@@ -119,62 +120,69 @@ class TestPlayerProperties:
     def test_white_cards_id_default(self, player):
         assert player.white_cards_id == []
 
-    def test_white_cards_id_none_when_key_missing(self, mock_mongo_client, mock_bot):
-        p = MongoPlayer(mock_mongo_client)
+    def test_white_cards_id_none_when_key_missing(
+        self, mock_bot, mock_repo, mock_repo_factory
+    ):
+        p = Player(
+            repository=mock_repo, repo_factory=mock_repo_factory
+        )
         p._bot = mock_bot
         assert p.white_cards_id is None
 
     def test_answers_id_default(self, player):
         assert player.answers_id == []
 
-    def test_answers_id_none_when_key_missing(self, mock_mongo_client, mock_bot):
-        p = MongoPlayer(mock_mongo_client)
+    def test_answers_id_none_when_key_missing(
+        self, mock_bot, mock_repo, mock_repo_factory
+    ):
+        p = Player(
+            repository=mock_repo, repo_factory=mock_repo_factory
+        )
         p._bot = mock_bot
         assert p.answers_id is None
 
 
 class TestPlayerCreate:
-    """Tests for MongoPlayer.create()."""
+    """Tests for Player.create()."""
 
-    async def test_create_sets_defaults(self, mock_bot, mock_mongo_client):
-        mock_col = mock_mongo_client["cards_against_humanity"]["players"]
-        mock_col.find_one = AsyncMock(return_value=None)
-
-        player = await MongoPlayer.create(mock_bot, mock_mongo_client)
+    async def test_create_sets_defaults(self, mock_bot, mock_repo, mock_repo_factory):
+        player = Player(repository=mock_repo, repo_factory=mock_repo_factory)
+        player._bot = mock_bot
+        player._set_default_values()
         assert player.score == 0
         assert player.white_cards_id == []
         assert player.answers_id == []
 
-    async def test_create_with_document_id(self, mock_bot, mock_mongo_client):
-        doc_id = ObjectId()
-        mock_col = mock_mongo_client["cards_against_humanity"]["players"]
-        mock_col.find_one = AsyncMock(
-            return_value={
-                "_id": doc_id,
-                "guild": 1,
-                "user": 2,
-                "channel": 3,
-                "score": 10,
-                "answers": [],
-                "white_cards": [],
-                "tsar_choice": 0,
-            }
+    async def test_create_with_document_id(self, mock_bot, mock_repo_factory):
+        doc_id = str(uuid4())
+        doc_data = {
+            "guild": 1,
+            "user": 2,
+            "channel": 3,
+            "score": 10,
+            "answers": [],
+            "white_cards": [],
+            "tsar_choice": 0,
+        }
+        # The mock factory's repo will return the document
+        mock_repo = mock_repo_factory._repo
+        mock_repo.find_by_id = AsyncMock(
+            return_value={"_id": doc_id, **doc_data}
         )
 
-        player = await MongoPlayer.create(
-            mock_bot, mock_mongo_client, document_id=doc_id
+        player = await Player.create(
+            mock_bot, mock_repo_factory, document_id=doc_id
         )
         assert player.document_id == doc_id
         assert player.score == 10
 
     async def test_create_with_member_user(
-        self, mock_bot, mock_mongo_client, mock_member
+        self, mock_bot, mock_repo, mock_repo_factory, mock_member
     ):
-        mock_col = mock_mongo_client["cards_against_humanity"]["players"]
-        mock_col.find_one = AsyncMock(
+        mock_repo.find_one = AsyncMock(
             return_value={
-                "_id": ObjectId(),
-                "guild": 1,
+                "_id": str(uuid4()),
+                "guild": mock_member.guild.id,
                 "user": mock_member.id,
                 "channel": 3,
                 "score": 2,
@@ -184,17 +192,21 @@ class TestPlayerCreate:
             }
         )
 
-        player = await MongoPlayer.create(
-            mock_bot, mock_mongo_client, user=mock_member
-        )
+        player = Player(repository=mock_repo, repo_factory=mock_repo_factory)
+        player._bot = mock_bot
+        player._set_default_values()
+        await player._get(mock_member)
         assert player.score == 2
+        mock_repo.find_one.assert_awaited_once_with(
+            {"user": mock_member.id, "guild": mock_member.guild.id}
+        )
 
 
 class TestPlayerMethods:
-    """Tests for MongoPlayer methods."""
+    """Tests for Player methods."""
 
     async def test_add_answers(self, player, mock_repo):
-        card_ids = [ObjectId() for _ in range(5)]
+        card_ids = [str(uuid4()) for _ in range(5)]
         player._document["white_cards"] = list(card_ids)
         mock_repo.replace = AsyncMock(
             return_value=player._document
@@ -208,9 +220,9 @@ class TestPlayerMethods:
         assert len(player._document["answers"]) == 2
 
     async def test_delete_answers(self, player, mock_repo):
-        oid = ObjectId()
-        player._document["_id"] = oid
-        player._document["answers"] = [ObjectId(), ObjectId()]
+        doc_id = str(uuid4())
+        player._document["_id"] = doc_id
+        player._document["answers"] = [str(uuid4()), str(uuid4())]
         mock_repo.replace = AsyncMock(
             return_value=player._document
         )
@@ -220,8 +232,8 @@ class TestPlayerMethods:
         assert player._document["answers"] == []
 
     async def test_delete_choice(self, player, mock_repo):
-        oid = ObjectId()
-        player._document["_id"] = oid
+        doc_id = str(uuid4())
+        player._document["_id"] = doc_id
         player._document["tsar_choice"] = 3
         mock_repo.replace = AsyncMock(
             return_value=player._document
@@ -232,7 +244,7 @@ class TestPlayerMethods:
         assert player.tsar_choice == 0
 
     async def test_get_white_cards(self, player, mock_repo):
-        card_ids = [ObjectId(), ObjectId()]
+        card_ids = [str(uuid4()), str(uuid4())]
         player._document["white_cards"] = card_ids
         mock_repo.find_by_id = AsyncMock(
             side_effect=[
@@ -246,7 +258,7 @@ class TestPlayerMethods:
         assert len(cards) == 2
 
     async def test_get_answers(self, player, mock_repo):
-        answer_ids = [ObjectId()]
+        answer_ids = [str(uuid4())]
         player._document["answers"] = answer_ids
         mock_repo.find_by_id = AsyncMock(
             return_value={"_id": answer_ids[0], "text": "An answer"}

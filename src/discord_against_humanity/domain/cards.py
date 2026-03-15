@@ -4,19 +4,18 @@ import logging
 from typing import Self
 
 from html2text import html2text
-from motor.motor_asyncio import AsyncIOMotorClient
 
-from discord_against_humanity.infrastructure.mongo import MongoDocument
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import RepositoryFactory
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PICK = 1
 
 
-class MongoBlackCard(MongoDocument):
-    """Data class for a Black Card (question) MongoDB document."""
+class BlackCard(Document):
+    """Data class for a Black Card (question) document."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "black_cards"
 
     @property
@@ -48,28 +47,30 @@ class MongoBlackCard(MongoDocument):
     @classmethod
     async def create(
         cls,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
-        document_id: object = None,
+        repo_factory: RepositoryFactory,
+        document_id: str | None = None,
     ) -> Self:
-        """Create a new MongoBlackCard instance.
+        """Create a new BlackCard instance.
 
         Args:
-            mongo_client: Motor client connected to the database.
-            document_id: Optional ObjectId of the document to load.
+            repo_factory: Factory to create repositories.
+            document_id: Optional ID of the document to load.
 
         Returns:
-            A new MongoBlackCard instance.
+            A new BlackCard instance.
         """
-        self = MongoBlackCard(mongo_client)
+        self = BlackCard(
+            repository=repo_factory("black_cards"),
+            repo_factory=repo_factory,
+        )
         if document_id:
             await self.get(document_id)
         return self
 
 
-class MongoWhiteCard(MongoDocument):
-    """Data class for a White Card (answer) MongoDB document."""
+class WhiteCard(Document):
+    """Data class for a White Card (answer) document."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "white_cards"
 
     @property
@@ -87,19 +88,22 @@ class MongoWhiteCard(MongoDocument):
     @classmethod
     async def create(
         cls,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
-        document_id: object = None,
+        repo_factory: RepositoryFactory,
+        document_id: str | None = None,
     ) -> Self:
-        """Create a new MongoWhiteCard instance.
+        """Create a new WhiteCard instance.
 
         Args:
-            mongo_client: Motor client connected to the database.
-            document_id: Optional ObjectId of the document to load.
+            repo_factory: Factory to create repositories.
+            document_id: Optional ID of the document to load.
 
         Returns:
-            A new MongoWhiteCard instance.
+            A new WhiteCard instance.
         """
-        self = MongoWhiteCard(mongo_client)
+        self = WhiteCard(
+            repository=repo_factory("white_cards"),
+            repo_factory=repo_factory,
+        )
         if document_id:
             await self.get(document_id)
         return self

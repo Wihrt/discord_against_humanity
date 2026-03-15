@@ -6,10 +6,10 @@ from typing import Any, Self
 import discord
 from discord import Guild, Member, TextChannel
 from discord.ext.commands import Bot
-from motor.motor_asyncio import AsyncIOMotorClient
 
-from discord_against_humanity.domain.cards import MongoWhiteCard
-from discord_against_humanity.infrastructure.mongo import MongoDocument
+from discord_against_humanity.domain.cards import WhiteCard
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import RepositoryFactory
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -18,10 +18,9 @@ logger = logging.getLogger(__name__)
 _WHITE_CARDS_NUMBER = 7
 
 
-class MongoPlayer(MongoDocument):
-    """MongoDB document class for a Cards Against Humanity player."""
+class Player(Document):
+    """Document class for a Cards Against Humanity player."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "players"
 
     # Properties
@@ -165,10 +164,10 @@ class MongoPlayer(MongoDocument):
 
     @property
     def white_cards_id(self) -> list[Any] | None:
-        """Get the list of white card ObjectIds in hand.
+        """Get the list of white card IDs in hand.
 
         Returns:
-            List of white card ObjectIds, or None.
+            List of white card IDs, or None.
         """
         try:
             return self._document["white_cards"]
@@ -177,10 +176,10 @@ class MongoPlayer(MongoDocument):
 
     @property
     def answers_id(self) -> list[Any] | None:
-        """Get the list of answer card ObjectIds.
+        """Get the list of answer card IDs.
 
         Returns:
-            List of selected answer ObjectIds, or None.
+            List of selected answer IDs, or None.
         """
         try:
             return self._document["answers"]
@@ -194,24 +193,27 @@ class MongoPlayer(MongoDocument):
     async def create(
         cls,
         discord_bot: Bot,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
-        document_id: object = None,
+        repo_factory: RepositoryFactory,
+        document_id: str | None = None,
         user: Member | discord.User | None = None,
         guild: Guild | None = None,
     ) -> Self:
-        """Create a new MongoPlayer instance.
+        """Create a new Player instance.
 
         Args:
             discord_bot: The Discord bot instance.
-            mongo_client: Motor client connected to the database.
-            document_id: Optional ObjectId to load an existing player.
+            repo_factory: Factory to create repositories.
+            document_id: Optional ID to load an existing player.
             user: Optional Discord Member/User to look up an existing player.
             guild: Optional Discord Guild to resolve member from user.
 
         Returns:
-            A new MongoPlayer instance.
+            A new Player instance.
         """
-        self = MongoPlayer(mongo_client)
+        self = Player(
+            repository=repo_factory("players"),
+            repo_factory=repo_factory,
+        )
         self._bot = discord_bot
         self._set_default_values()
         if document_id:
@@ -232,7 +234,7 @@ class MongoPlayer(MongoDocument):
     # -------------------------------------------------------------------------
 
     async def _get(self, user: Member) -> None:
-        """Load the player document by Discord user.
+        """Load the player document by Discord user and guild.
 
         Args:
             user: The Discord member to search for.
@@ -242,7 +244,9 @@ class MongoPlayer(MongoDocument):
         """
         if not isinstance(user, Member):
             raise TypeError("Wrong type for user")
-        document = await self._repo.find_one({"user": user.id})
+        document = await self._repo.find_one(
+            {"user": user.id, "guild": user.guild.id}
+        )
         if document:
             self._document = document
 
@@ -260,15 +264,15 @@ class MongoPlayer(MongoDocument):
     # -------------------------------------------------------------------------
 
     @async_log_event
-    async def get_white_cards(self) -> list[MongoWhiteCard]:
+    async def get_white_cards(self) -> list[WhiteCard]:
         """Get the white cards in this player's hand.
 
         Returns:
-            List of MongoWhiteCard instances.
+            List of WhiteCard instances.
         """
-        cards: list[MongoWhiteCard] = []
+        cards: list[WhiteCard] = []
         for card_id in self.white_cards_id:  # type: ignore[union-attr]
-            card = await MongoWhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._repo_factory, card_id)
             cards.append(card)
         return cards
 
@@ -282,17 +286,11 @@ class MongoPlayer(MongoDocument):
         nearly exhausted.
 
         Args:
-            used_cards: List of ObjectIds for already-used cards.
+            used_cards: List of IDs for already-used cards.
         """
-        from discord_against_humanity.infrastructure.mongo import (
-            MongoRepository,
-        )
-
         max_attempts = 200
         attempts = 0
-        wc_repo = MongoRepository(
-            self._client, self._DATABASE, "white_cards"
-        )
+        wc_repo = self._repo_factory("white_cards")
         while len(self.white_cards_id) != _WHITE_CARDS_NUMBER:  # type: ignore[arg-type]
             attempts += 1
             if attempts > max_attempts:
@@ -300,10 +298,8 @@ class MongoPlayer(MongoDocument):
                     "Could not fill hand: deck may be exhausted"
                 )
                 break
-            results = await wc_repo.aggregate(
-                [{"$sample": {"size": 1}}]
-            )
-            for document in results:
+            document = await wc_repo.random_member()
+            if document is not None:
                 card_id = document["_id"]
                 if (
                     card_id not in used_cards
@@ -328,15 +324,15 @@ class MongoPlayer(MongoDocument):
         await self.channel.send(embed=embed)  # type: ignore[union-attr]
 
     @async_log_event
-    async def get_answers(self) -> list[MongoWhiteCard]:
+    async def get_answers(self) -> list[WhiteCard]:
         """Get the white cards selected as answers.
 
         Returns:
-            List of MongoWhiteCard instances.
+            List of WhiteCard instances.
         """
-        cards: list[MongoWhiteCard] = []
+        cards: list[WhiteCard] = []
         for card_id in self.answers_id:  # type: ignore[union-attr]
-            card = await MongoWhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._repo_factory, card_id)
             cards.append(card)
         return cards
 
