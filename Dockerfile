@@ -20,7 +20,7 @@ RUN uv sync --frozen --no-dev
 # ---------------------------------------------------------------------------
 # Stage 2 – Runtime (minimal image, no uv / build tools)
 # ---------------------------------------------------------------------------
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # Security: run as non-root
 RUN groupadd --gid 1000 bot && \
