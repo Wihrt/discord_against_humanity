@@ -1,8 +1,8 @@
 """Integration tests using Testcontainers with a real MongoDB instance.
 
 These tests verify that the repository pattern and domain models work
-correctly against an actual MongoDB server.  They are automatically
-skipped when Docker is not available.
+correctly against an actual MongoDB server seeded with card data.
+They are automatically skipped when Docker is not available.
 """
 
 import asyncio
@@ -31,6 +31,46 @@ pytestmark = pytest.mark.skipif(
     reason="testcontainers[mongodb] not installed",
 )
 
+# ---------------------------------------------------------------------------
+# Seed data — minimal Cards Against Humanity card sets
+# ---------------------------------------------------------------------------
+
+SEED_BLACK_CARDS = [
+    {"text": "Why can't I sleep at night?", "pick": 1},
+    {"text": "I got 99 problems but _ ain't one.", "pick": 1},
+    {"text": "What's a girl's best friend?", "pick": 1},
+    {"text": "_ + _ = _.", "pick": 3},
+    {"text": "In a world ravaged by _, our only solace is _.", "pick": 2},
+    {"text": "What is Batman's guilty pleasure?", "pick": 1},
+    {"text": "TSA guidelines now prohibit _ on airplanes.", "pick": 1},
+    {"text": "What ended my last relationship?", "pick": 1},
+    {"text": "What's the next Happy Meal toy?", "pick": 1},
+    {"text": "Introducing the amazing superhero/sidekick duo! _ and _!", "pick": 2},
+]
+
+SEED_WHITE_CARDS = [
+    {"text": "Flying sex snakes."},
+    {"text": "A disappointing birthday party."},
+    {"text": "Puppies!"},
+    {"text": "A windmill full of corpses."},
+    {"text": "Bees?"},
+    {"text": "An asymmetric boob job."},
+    {"text": "A salty surprise."},
+    {"text": "Cards Against Humanity."},
+    {"text": "Doing the right thing."},
+    {"text": "Exactly what you'd expect."},
+    {"text": "A snapping turtle biting the tip of your penis."},
+    {"text": "The miracle of childbirth."},
+    {"text": "A stray pube."},
+    {"text": "One thousand Slim Jims."},
+    {"text": "Being a motherfucking sorcerer."},
+]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def mongo_container():
@@ -54,6 +94,33 @@ def repository(motor_client):  # type: ignore[no-untyped-def]
     return MongoRepository(
         motor_client, "test_db", "test_collection"
     )
+
+
+@pytest.fixture
+async def seeded_client(motor_client):  # type: ignore[no-untyped-def]
+    """Seed the ``cards_against_humanity`` database with card data.
+
+    Inserts black and white cards into dedicated collections,
+    then cleans them up after the test.
+    """
+    db = motor_client["cards_against_humanity"]
+
+    black_col = db["black_cards"]
+    white_col = db["white_cards"]
+
+    await black_col.insert_many(
+        [dict(card) for card in SEED_BLACK_CARDS]
+    )
+    await white_col.insert_many(
+        [dict(card) for card in SEED_WHITE_CARDS]
+    )
+
+    yield motor_client
+
+    await black_col.drop()
+    await white_col.drop()
+    await db["games"].drop()
+    await db["players"].drop()
 
 
 # ---------------------------------------------------------------------------
@@ -227,3 +294,219 @@ class TestMongoDocumentIntegration:
         await doc_b.get(doc_b.document_id)
         assert doc_a._document["name"] == "A"
         assert doc_b._document["name"] == "B"
+
+
+# ---------------------------------------------------------------------------
+# Card domain model integration tests (seeded database)
+# ---------------------------------------------------------------------------
+
+
+class TestBlackCardIntegration:
+    """Integration tests for MongoBlackCard against a seeded database."""
+
+    async def test_create_and_load_by_id(self, seeded_client):
+        """Load a black card by ObjectId from the seeded collection."""
+        from discord_against_humanity.domain.cards import (
+            MongoBlackCard,
+        )
+
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "black_cards",
+        )
+        results = await repo.aggregate(
+            [{"$sample": {"size": 1}}]
+        )
+        card_id = results[0]["_id"]
+
+        card = await MongoBlackCard.create(seeded_client, card_id)
+        assert card.document_id == card_id
+        assert card.text is not None
+        assert len(card.text) > 0
+        assert card.pick >= 1
+
+    async def test_pick_value_matches_seed(self, seeded_client):
+        """Verify pick values are preserved from seed data."""
+        from discord_against_humanity.domain.cards import (
+            MongoBlackCard,
+        )
+
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "black_cards",
+        )
+        # Find the "pick 3" card
+        doc = await repo.find_one({"pick": 3})
+        assert doc is not None
+
+        card = await MongoBlackCard.create(
+            seeded_client, doc["_id"]
+        )
+        assert card.pick == 3
+
+    async def test_text_with_underscore_formats_blanks(
+        self, seeded_client
+    ):
+        """Black card text with underscores renders as bold blanks."""
+        from discord_against_humanity.domain.cards import (
+            MongoBlackCard,
+        )
+
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "black_cards",
+        )
+        doc = await repo.find_one(
+            {"text": {"$regex": "_"}}
+        )
+        assert doc is not None
+
+        card = await MongoBlackCard.create(
+            seeded_client, doc["_id"]
+        )
+        assert card.text is not None
+        assert "_" not in card.text
+        assert "{}" in card.text
+
+    async def test_seeded_collection_count(self, seeded_client):
+        """Verify the seeded collection has the expected number of cards."""
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "black_cards",
+        )
+        results = await repo.aggregate(
+            [{"$count": "total"}]
+        )
+        assert results[0]["total"] == len(SEED_BLACK_CARDS)
+
+
+class TestWhiteCardIntegration:
+    """Integration tests for MongoWhiteCard against a seeded database."""
+
+    async def test_create_and_load_by_id(self, seeded_client):
+        """Load a white card by ObjectId from the seeded collection."""
+        from discord_against_humanity.domain.cards import (
+            MongoWhiteCard,
+        )
+
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "white_cards",
+        )
+        results = await repo.aggregate(
+            [{"$sample": {"size": 1}}]
+        )
+        card_id = results[0]["_id"]
+
+        card = await MongoWhiteCard.create(seeded_client, card_id)
+        assert card.document_id == card_id
+        assert card.text is not None
+        assert len(card.text) > 0
+
+    async def test_seeded_collection_count(self, seeded_client):
+        """Verify the seeded collection has the expected number of cards."""
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "white_cards",
+        )
+        results = await repo.aggregate(
+            [{"$count": "total"}]
+        )
+        assert results[0]["total"] == len(SEED_WHITE_CARDS)
+
+    async def test_text_html_is_converted(self, seeded_client):
+        """White card text is converted from HTML to plain text."""
+        from discord_against_humanity.domain.cards import (
+            MongoWhiteCard,
+        )
+
+        # Insert a card with HTML content
+        db = seeded_client["cards_against_humanity"]
+        result = await db["white_cards"].insert_one(
+            {"text": "<b>Bold answer</b>"}
+        )
+        card = await MongoWhiteCard.create(
+            seeded_client, result.inserted_id
+        )
+        assert card.text is not None
+        assert "<b>" not in card.text
+        assert "Bold answer" in card.text
+
+
+# ---------------------------------------------------------------------------
+# Game domain model integration tests (seeded database)
+# ---------------------------------------------------------------------------
+
+
+class TestGameCardDrawIntegration:
+    """Integration tests for card-drawing logic against a seeded database."""
+
+    async def test_draw_black_card_from_seeded_deck(
+        self, seeded_client
+    ):
+        """draw_black_card retrieves a card from the seeded deck."""
+        from unittest.mock import MagicMock
+
+        from discord_against_humanity.domain.game import MongoGame
+
+        mock_bot = MagicMock()
+        game = MongoGame(seeded_client)
+        game._bot = mock_bot
+        game._set_default_values()
+        await game.save()
+
+        embed = await game.draw_black_card()
+
+        assert len(game.black_cards_id) == 1  # type: ignore[arg-type]
+        assert embed is not None
+        # Verify the drawn card exists in the database
+        from discord_against_humanity.domain.cards import (
+            MongoBlackCard,
+        )
+
+        card = await MongoBlackCard.create(
+            seeded_client, game.black_cards_id[0]  # type: ignore[index]
+        )
+        assert card.text is not None
+
+    async def test_draw_multiple_unique_black_cards(
+        self, seeded_client
+    ):
+        """Drawing multiple black cards yields unique cards each time."""
+        from unittest.mock import MagicMock
+
+        from discord_against_humanity.domain.game import MongoGame
+
+        mock_bot = MagicMock()
+        game = MongoGame(seeded_client)
+        game._bot = mock_bot
+        game._set_default_values()
+        await game.save()
+
+        for _ in range(5):
+            await game.draw_black_card()
+
+        assert len(game.black_cards_id) == 5  # type: ignore[arg-type]
+        unique_ids = set(game.black_cards_id)  # type: ignore[arg-type]
+        assert len(unique_ids) == 5
+
+    async def test_sample_random_white_cards(self, seeded_client):
+        """$sample aggregation draws random white cards from the deck."""
+        repo = MongoRepository(
+            seeded_client,
+            "cards_against_humanity",
+            "white_cards",
+        )
+        results = await repo.aggregate(
+            [{"$sample": {"size": 7}}]
+        )
+        assert len(results) == 7
+        ids = [r["_id"] for r in results]
+        # All drawn cards should have valid ObjectIds
+        assert all(isinstance(i, ObjectId) for i in ids)
