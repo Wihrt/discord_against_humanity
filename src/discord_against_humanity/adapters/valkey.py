@@ -16,7 +16,9 @@ from discord_against_humanity.ports.repository import (
 logger = logging.getLogger(__name__)
 
 # Secondary-index configuration per collection.
-# Only fields listed here support ``find_one`` look-ups.
+# Maps collection names to the field names that should be indexed for
+# ``find_one`` look-ups.  Add an entry here when a domain model needs
+# to query by a field other than its primary ID.
 _INDEX_FIELDS: dict[str, list[str]] = {
     "games": ["guild"],
     "players": ["user"],

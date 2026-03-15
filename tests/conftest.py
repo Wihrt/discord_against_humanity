@@ -27,7 +27,7 @@ def mock_valkey_client():
     return client
 
 
-def _make_mock_repo():
+def _create_mock_repo():
     """Build a fresh mock Repository."""
     repo = MagicMock(spec=Repository)
     repo.find_by_id = AsyncMock(return_value=None)
@@ -43,7 +43,7 @@ def _make_mock_repo():
 @pytest.fixture
 def mock_repo():
     """Create a mock Repository."""
-    return _make_mock_repo()
+    return _create_mock_repo()
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def mock_repo_factory():
     Returns the same mock Repository for any collection name
     so tests can inspect it easily.
     """
-    repo = _make_mock_repo()
+    repo = _create_mock_repo()
     factory = MagicMock(side_effect=lambda _collection: repo)
     factory._repo = repo  # expose for test assertions
     return factory
