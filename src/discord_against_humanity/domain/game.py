@@ -1,7 +1,7 @@
 """Game state and logic for Cards Against Humanity."""
 
-import asyncio
 import logging
+from asyncio import sleep
 from random import sample, shuffle
 from typing import Any, Self
 
@@ -14,10 +14,6 @@ from discord_against_humanity.domain.player import MongoPlayer
 from discord_against_humanity.infrastructure.mongo import MongoDocument
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
-from discord_against_humanity.utils.emoji import (
-    emoji_to_index,
-    get_number_emojis,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -503,10 +499,7 @@ class MongoGame(MongoDocument):
 
     @async_log_event
     async def send_answers(self) -> Any:
-        """Combine player answers with the black card, display proposals.
-
-        Sends the shuffled proposals to the board and to the tsar's
-        private channel with reaction emojis for voting.
+        """Combine player answers with the black card and send proposals.
 
         Returns:
             A Discord Embed with the shuffled proposals.
@@ -518,9 +511,6 @@ class MongoGame(MongoDocument):
             if player.document_id != self.tsar_id:
                 answers: list[str] = []
                 player_answers = await player.get_answers()
-                if len(player_answers) != black_card.pick:
-                    await player.delete_answers()
-                    continue
                 for answer in player_answers:
                     self._document["white_cards"].append(
                         answer.document_id
@@ -536,7 +526,7 @@ class MongoGame(MongoDocument):
         proposals = ""
         for index, value in enumerate(self._document["results"]):
             proposals += f"{index + 1}. {value[1]}\n"
-        proposals_embed = create_embed(
+        message = create_embed(
             {
                 "fields": {
                     "name": "Proposals",
@@ -545,160 +535,53 @@ class MongoGame(MongoDocument):
                 }
             }
         )
-
-        await self.board.send(embed=proposals_embed)  # type: ignore[union-attr]
-
-        tsar = await self.get_tsar()
-        if tsar.channel is not None:
-            number_of_proposals = len(self._document["results"])
-            tsar_message = await tsar.channel.send(
-                embed=proposals_embed
-            )
-            for emoji in get_number_emojis(number_of_proposals):
-                await tsar_message.add_reaction(emoji)
-            tsar.answer_message_id = tsar_message.id
-            await tsar.save()
-
-        return proposals_embed
+        return message
 
     @async_log_event
-    async def wait_for_players_answers(
-        self, required_picks: int = 1
-    ) -> None:
-        """Wait for all non-tsar players to vote via reactions.
+    async def wait_for_players_answers(self) -> None:
+        """Wait for all non-tsar players to vote.
 
-        Collects reactions from every non-tsar player concurrently.
-        Each player's reactions are captured in order using
-        ``bot.wait_for('reaction_add')``, which solves the reaction
-        ordering problem.
-
-        The method periodically checks whether the game has been
-        stopped (every ``_POLL_INTERVAL`` seconds) to avoid blocking
-        indefinitely.
-
-        Args:
-            required_picks: Number of cards each player must pick.
+        Exits early if the game is stopped.
         """
         self.voting = "players"
         await self.save()
 
         await self.board.send(  # type: ignore[union-attr]
-            "Time to vote! React in your private channel."
+            "Time to vote! Vote in your private channel by using `/vote`"
         )
 
-        players = await self.get_players()
-
-        async def collect_player_reactions(
-            player: MongoPlayer,
-        ) -> None:
-            """Collect reactions from a single player."""
-            if (
-                player.document_id == self.tsar_id
-                or player.answer_message_id == 0
-                or player.channel is None
-            ):
-                return
-
-            selected_indices: list[int] = []
-            hand_size = len(player.white_cards_id or [])
-            if hand_size == 0:
-                return
-            valid_emojis = get_number_emojis(hand_size)
-
-            for _ in range(required_picks):
-                found_reaction = False
-                while not found_reaction:
-
-                    def check(
-                        reaction: Any, user: Any
-                    ) -> bool:
-                        return (
-                            user.id == player._document["user"]
-                            and reaction.message.id
-                            == player.answer_message_id
-                            and str(reaction.emoji) in valid_emojis
-                            and emoji_to_index(str(reaction.emoji))
-                            not in selected_indices
-                        )
-
-                    try:
-                        reaction, _ = await asyncio.wait_for(
-                            self._bot.wait_for(
-                                "reaction_add", check=check
-                            ),
-                            timeout=_POLL_INTERVAL,
-                        )
-                        index = emoji_to_index(str(reaction.emoji))
-                        if index is not None:
-                            selected_indices.append(index)
-                            found_reaction = True
-                    except asyncio.TimeoutError:
-                        await self._reload()
-                        if not self.playing:
-                            return
-
-            if len(selected_indices) == required_picks:
-                card_indices = [idx + 1 for idx in selected_indices]
-                await player.add_answers(card_indices)
-                if self.board is not None and player.user is not None:
-                    await self.board.send(
-                        f"{player.user.mention} has voted!"
-                    )
-
-        tasks = [collect_player_reactions(p) for p in players]
-        await asyncio.gather(*tasks)
+        number_of_answers = await self.get_players_answers()
+        while number_of_answers != len(self.players_id) - 1:  # type: ignore[arg-type]
+            await sleep(_POLL_INTERVAL)
+            await self._reload()
+            if not self.playing:
+                break
+            number_of_answers = await self.get_players_answers()
 
         self.voting = "nobody"
         await self.save()
 
     @async_log_event
     async def wait_for_tsar_answer(self) -> None:
-        """Wait for the tsar to vote via a reaction.
+        """Wait for the tsar to vote.
 
-        Captures the tsar's single reaction on the proposals message.
-        Periodically checks whether the game has been stopped.
+        Exits early if the game is stopped.
         """
         self.voting = "tsar"
         await self.save()
 
         await self.board.send(  # type: ignore[union-attr]
-            "Time for tsar to decide! React in your private channel."
+            "Time for tsar to decide! Vote in your private channel "
+            "by using `/tsar`"
         )
 
-        tsar = await self.get_tsar()
-        if tsar.answer_message_id == 0 or tsar.channel is None:
-            self.voting = "nobody"
-            await self.save()
-            return
-
-        number_of_proposals = len(self._document["results"])
-        valid_emojis = get_number_emojis(number_of_proposals)
-
-        while True:
-
-            def check(reaction: Any, user: Any) -> bool:
-                return (
-                    user.id == tsar._document["user"]
-                    and reaction.message.id == tsar.answer_message_id
-                    and str(reaction.emoji) in valid_emojis
-                )
-
-            try:
-                reaction, _ = await asyncio.wait_for(
-                    self._bot.wait_for(
-                        "reaction_add", check=check
-                    ),
-                    timeout=_POLL_INTERVAL,
-                )
-                index = emoji_to_index(str(reaction.emoji))
-                if index is not None:
-                    tsar.tsar_choice = index + 1
-                    await tsar.save()
+        tsar_answer = await self.get_tsar_answer()
+        while not tsar_answer:
+            await sleep(_POLL_INTERVAL)
+            await self._reload()
+            if not self.playing:
                 break
-            except asyncio.TimeoutError:
-                await self._reload()
-                if not self.playing:
-                    break
+            tsar_answer = await self.get_tsar_answer()
 
         self.voting = "nobody"
         await self.save()

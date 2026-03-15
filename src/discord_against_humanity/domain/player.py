@@ -12,7 +12,6 @@ from discord_against_humanity.domain.cards import MongoWhiteCard
 from discord_against_humanity.infrastructure.mongo import MongoDocument
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
-from discord_against_humanity.utils.emoji import get_number_emojis
 
 logger = logging.getLogger(__name__)
 
@@ -165,29 +164,6 @@ class MongoPlayer(MongoDocument):
         self._document["tsar_choice"] = value
 
     @property
-    def answer_message_id(self) -> int:
-        """Get the ID of the message the player reacts on to vote.
-
-        Returns:
-            The Discord message ID, or 0 if not set.
-        """
-        return self._document.get("answer_message_id", 0)
-
-    @answer_message_id.setter
-    def answer_message_id(self, value: int) -> None:
-        """Set the answer message ID.
-
-        Args:
-            value: The Discord message ID.
-
-        Raises:
-            TypeError: If value is not an int.
-        """
-        if not isinstance(value, int):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["answer_message_id"] = value
-
-    @property
     def white_cards_id(self) -> list[Any] | None:
         """Get the list of white card ObjectIds in hand.
 
@@ -277,7 +253,6 @@ class MongoPlayer(MongoDocument):
         self._document["channel"] = 0
         self._document["score"] = 0
         self._document["answers"] = []
-        self._document["answer_message_id"] = 0
         self._document["white_cards"] = []
         self._document["tsar_choice"] = 0
 
@@ -337,24 +312,20 @@ class MongoPlayer(MongoDocument):
                     self._document["white_cards"].append(card_id)
         await self.save()
 
+        proposals = ""
         white_cards = await self.get_white_cards()
-        card_list = ""
         for index, card in enumerate(white_cards):
-            card_list += f"{index + 1}. {card.text}\n"
+            proposals += f"{index + 1}. {card.text}\n"
         embed = create_embed(
             {
                 "fields": {
                     "name": "Answers",
-                    "value": card_list.rstrip(),
+                    "value": proposals.rstrip(),
                     "inline": False,
                 }
             }
         )
-        hand_message = await self.channel.send(embed=embed)  # type: ignore[union-attr]
-        for emoji in get_number_emojis(len(white_cards)):
-            await hand_message.add_reaction(emoji)
-        self._document["answer_message_id"] = hand_message.id
-        await self.save()
+        await self.channel.send(embed=embed)  # type: ignore[union-attr]
 
     @async_log_event
     async def get_answers(self) -> list[MongoWhiteCard]:

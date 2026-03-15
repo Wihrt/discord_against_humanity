@@ -8,12 +8,17 @@ from discord import PermissionOverwrite, app_commands
 from discord.ext import commands
 
 from discord_against_humanity.checks.game_checks import (
+    from_user_channel,
     game_exists,
     game_not_playing,
     game_playing,
     is_enough_players,
     is_not_player,
+    is_not_tsar,
     is_player,
+    is_players_voting,
+    is_tsar,
+    is_tsar_voting,
     no_game_exists,
 )
 from discord_against_humanity.domain.game import MongoGame
@@ -233,15 +238,17 @@ class CardsAgainstHumanity(commands.Cog):
                 f"{tsar.user.mention}! You're the tsar!"
             )
             question = await game.draw_black_card()
-            black_card = await game.get_black_card()
             await game.board.send(embed=question)  # type: ignore[union-attr]
             players = await game.get_players()
             for player in players:
                 if player.channel is not None:
                     await player.channel.send(embed=question)
                 await player.draw_white_cards(game.white_cards_id)
-            await game.wait_for_players_answers(black_card.pick)
-            await game.send_answers()
+            await game.wait_for_players_answers()
+            proposals = await game.send_answers()
+            await game.board.send(embed=proposals)  # type: ignore[union-attr]
+            if tsar.channel is not None:
+                await tsar.channel.send(embed=proposals)
             await game.wait_for_tsar_answer()
             await game.select_winner()
             await game.score()
@@ -266,6 +273,106 @@ class CardsAgainstHumanity(commands.Cog):
         game.playing = False
         await game.save()
         await interaction.response.send_message("Game stopped.", ephemeral=True)
+
+    @app_commands.command(
+        name="vote", description="Vote for your answer(s) as a player"
+    )
+    @app_commands.describe(
+        answers="Card number(s) to vote for, space-separated"
+    )
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_player)
+    @app_commands.check(game_playing)
+    @app_commands.check(from_user_channel)
+    @app_commands.check(is_players_voting)
+    @app_commands.check(is_not_tsar)
+    async def vote(
+        self, interaction: discord.Interaction, answers: str
+    ) -> None:
+        """Vote for answers as a player.
+
+        Args:
+            interaction: The Discord interaction.
+            answers: Space-separated card numbers to vote for.
+        """
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
+        black_card = await game.get_black_card()
+        try:
+            int_answers = list(map(int, answers.split()))
+            if len(int_answers) != black_card.pick:
+                await interaction.response.send_message(
+                    f"You must provide {black_card.pick} answers. "
+                    f"You provided {len(int_answers)} answers.",
+                    ephemeral=True,
+                )
+            elif not all(i in range(1, 8) for i in int_answers):
+                await interaction.response.send_message(
+                    "Your answer(s) are not between 1 and 7.", ephemeral=True
+                )
+            else:
+                await player.add_answers(int_answers)
+                await game.board.send(  # type: ignore[union-attr]
+                    f"{interaction.user.mention} has voted!"
+                )
+                await interaction.response.send_message(
+                    "Vote recorded!", ephemeral=True
+                )
+        except (TypeError, ValueError):
+            await interaction.response.send_message(
+                "Your answer is not a valid integer!", ephemeral=True
+            )
+
+    @app_commands.command(
+        name="tsar", description="Vote for an answer as the tsar"
+    )
+    @app_commands.describe(answer="The answer number to select")
+    @app_commands.guild_only()
+    @app_commands.check(game_exists)
+    @app_commands.check(is_player)
+    @app_commands.check(game_playing)
+    @app_commands.check(from_user_channel)
+    @app_commands.check(is_tsar_voting)
+    @app_commands.check(is_tsar)
+    async def tsar(self, interaction: discord.Interaction, answer: int) -> None:
+        """Vote for an answer as the tsar.
+
+        Args:
+            interaction: The Discord interaction.
+            answer: The answer number to select.
+        """
+        assert interaction.guild is not None
+        game = await MongoGame.create(
+            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        )
+        player = await MongoPlayer.create(
+            self.bot,
+            self.bot.mongo,  # type: ignore[attr-defined]
+            user=interaction.user,
+            guild=interaction.guild,
+        )
+        if answer not in range(1, len(game.players_id)):  # type: ignore[arg-type]
+            await interaction.response.send_message(
+                "Your answer is not in the acceptable range.", ephemeral=True
+            )
+        else:
+            player.tsar_choice = answer
+            await player.save()
+            await game.board.send(  # type: ignore[union-attr]
+                f"{interaction.user.mention} has voted!"
+            )
+            await interaction.response.send_message(
+                "Tsar vote recorded!", ephemeral=True
+            )
 
     @app_commands.command(
         name="score", description="Display the current scores"
@@ -305,8 +412,8 @@ class CardsAgainstHumanity(commands.Cog):
                     "Course of the game:\n"
                     "1. A black card (question) is picked\n"
                     "2. Players pick white cards (answers)\n"
-                    "3. Players vote using reactions in their channel\n"
-                    "4. Tsar votes using reactions in their channel\n"
+                    "3. Players vote — Use `/vote` in your channel\n"
+                    "4. Tsar votes — Use `/tsar` in your channel\n"
                     "5. Deciding winner and go back to start"
                 ),
             }
