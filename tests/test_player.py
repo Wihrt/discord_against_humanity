@@ -116,6 +116,17 @@ class TestPlayerProperties:
         with pytest.raises(TypeError):
             player.tsar_choice = "nope"
 
+    def test_answer_message_id_default(self, player):
+        assert player.answer_message_id == 0
+
+    def test_answer_message_id_setter(self, player):
+        player.answer_message_id = 123456789
+        assert player.answer_message_id == 123456789
+
+    def test_answer_message_id_setter_rejects_wrong_type(self, player):
+        with pytest.raises(TypeError):
+            player.answer_message_id = "not an int"
+
     def test_white_cards_id_default(self, player):
         assert player.white_cards_id == []
 
@@ -144,6 +155,7 @@ class TestPlayerCreate:
         assert player.score == 0
         assert player.white_cards_id == []
         assert player.answers_id == []
+        assert player.answer_message_id == 0
 
     async def test_create_with_document_id(self, mock_bot, mock_mongo_client):
         doc_id = ObjectId()
