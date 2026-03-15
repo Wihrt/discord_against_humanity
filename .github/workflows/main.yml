@@ -34,7 +34,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run pytest --tb=short -q
+      - name: Run tests (unit + integration with testcontainers)
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: uv run pytest --tb=short -q
 
   docker-build-push:
     name: Docker Build & Push
