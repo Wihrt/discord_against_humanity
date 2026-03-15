@@ -234,7 +234,7 @@ class Player(Document):
     # -------------------------------------------------------------------------
 
     async def _get(self, user: Member) -> None:
-        """Load the player document by Discord user.
+        """Load the player document by Discord user and guild.
 
         Args:
             user: The Discord member to search for.
@@ -244,7 +244,9 @@ class Player(Document):
         """
         if not isinstance(user, Member):
             raise TypeError("Wrong type for user")
-        document = await self._repo.find_one({"user": user.id})
+        document = await self._repo.find_one(
+            {"user": user.id, "guild": user.guild.id}
+        )
         if document:
             self._document = document
 

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # to query by a field other than its primary ID.
 _INDEX_FIELDS: dict[str, list[str]] = {
     "games": ["guild"],
-    "players": ["user"],
+    "players": ["user", "guild"],
 }
 
 
@@ -72,7 +72,11 @@ class ValkeyRepository(Repository):
     async def find_one(
         self, query: dict[str, Any]
     ) -> dict[str, Any] | None:
-        """Find a single document matching a query via secondary indices."""
+        """Find a single document matching a query via secondary indices.
+
+        Uses indexed fields to locate a candidate document, then verifies
+        that *all* query predicates match before returning it.
+        """
         for field, value in query.items():
             if field in self._index_fields:
                 doc_id = await self._client.get(
@@ -81,7 +85,12 @@ class ValkeyRepository(Repository):
                 if doc_id is not None:
                     if isinstance(doc_id, bytes):
                         doc_id = doc_id.decode()
-                    return await self.find_by_id(doc_id)
+                    doc = await self.find_by_id(doc_id)
+                    if doc is None:
+                        continue
+                    # Verify all query predicates match
+                    if all(doc.get(k) == v for k, v in query.items()):
+                        return doc
         return None
 
     async def insert(self, document: dict[str, Any]) -> str:
@@ -104,16 +113,30 @@ class ValkeyRepository(Repository):
     ) -> dict[str, Any]:
         """Replace an existing document.
 
+        Removes stale secondary index entries for changed fields before
+        writing the new document and its updated index entries.
+
         Raises:
             DocumentNotFoundError: If no document matches the ID.
         """
-        if not await self._client.exists(
-            self._doc_key(document_id)
-        ):
+        existing = await self._client.get(self._doc_key(document_id))
+        if existing is None:
             raise DocumentNotFoundError(
                 f"Document {document_id} not found for replacement"
             )
+        old_doc = json.loads(existing)
+
         doc = {k: v for k, v in document.items() if k != "_id"}
+
+        # Remove stale index entries where the value changed
+        for field in self._index_fields:
+            old_val = old_doc.get(field)
+            new_val = doc.get(field)
+            if old_val is not None and old_val != new_val:
+                await self._client.delete(
+                    self._index_key(field, old_val)
+                )
+
         await self._client.set(
             self._doc_key(document_id), json.dumps(doc)
         )

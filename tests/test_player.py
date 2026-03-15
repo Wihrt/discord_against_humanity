@@ -182,7 +182,7 @@ class TestPlayerCreate:
         mock_repo.find_one = AsyncMock(
             return_value={
                 "_id": str(uuid4()),
-                "guild": 1,
+                "guild": mock_member.guild.id,
                 "user": mock_member.id,
                 "channel": 3,
                 "score": 2,
@@ -197,6 +197,9 @@ class TestPlayerCreate:
         player._set_default_values()
         await player._get(mock_member)
         assert player.score == 2
+        mock_repo.find_one.assert_awaited_once_with(
+            {"user": mock_member.id, "guild": mock_member.guild.id}
+        )
 
 
 class TestPlayerMethods:

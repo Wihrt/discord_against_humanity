@@ -21,7 +21,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 EOF
 
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --no-dev --no-install-project
 
 # ---------------------------------------------------------------------------
 # Stage 2 – Runtime (seed the Valkey database)

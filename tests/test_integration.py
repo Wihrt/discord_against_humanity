@@ -21,14 +21,17 @@ from discord_against_humanity.ports.valkey import (
 
 _can_use_docker = True
 try:
+    import docker
     from testcontainers.core.container import DockerContainer
     from testcontainers.core.waiting_utils import wait_for_logs
-except ImportError:
+
+    docker.from_env().ping()
+except (ImportError, Exception):
     _can_use_docker = False
 
 pytestmark = pytest.mark.skipif(
     not _can_use_docker,
-    reason="testcontainers not installed",
+    reason="testcontainers not installed or Docker not available",
 )
 
 # ---------------------------------------------------------------------------
