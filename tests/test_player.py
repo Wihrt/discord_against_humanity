@@ -149,21 +149,22 @@ class TestPlayerCreate:
         assert player.answers_id == []
 
     async def test_create_with_document_id(self, mock_bot, mock_valkey_client):
+        import json
+
         doc_id = str(uuid4())
-        mock_repo = MagicMock(spec=Repository)
-        mock_repo.find_by_id = AsyncMock(
-            return_value={
-                "_id": doc_id,
-                "guild": 1,
-                "user": 2,
-                "channel": 3,
-                "score": 10,
-                "answers": [],
-                "white_cards": [],
-                "tsar_choice": 0,
-            }
+        doc_data = {
+            "guild": 1,
+            "user": 2,
+            "channel": 3,
+            "score": 10,
+            "answers": [],
+            "white_cards": [],
+            "tsar_choice": 0,
+        }
+        # The ValkeyRepository will call client.get() to find the document
+        mock_valkey_client.get = AsyncMock(
+            return_value=json.dumps(doc_data)
         )
-        mock_repo.find_one = AsyncMock(return_value=None)
 
         player = await ValkeyPlayer.create(
             mock_bot, mock_valkey_client, document_id=doc_id

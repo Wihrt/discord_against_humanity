@@ -54,8 +54,6 @@ class TestValkeyBlackCard:
         assert card.document_id is None
 
     async def test_create_with_document_id(self, mock_valkey_client):
-        import json
-
         doc_id = str(uuid4())
         mock_repo = MagicMock(spec=Repository)
         mock_repo.find_by_id = AsyncMock(

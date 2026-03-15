@@ -1,15 +1,15 @@
 """Infrastructure layer for database access."""
 
-from discord_against_humanity.infrastructure.mongo import (
+from discord_against_humanity.infrastructure.valkey import (
     DocumentNotFoundError,
-    MongoDocument,
-    MongoRepository,
     Repository,
+    ValkeyDocument,
+    ValkeyRepository,
 )
 
 __all__ = [
     "DocumentNotFoundError",
-    "MongoDocument",
-    "MongoRepository",
     "Repository",
+    "ValkeyDocument",
+    "ValkeyRepository",
 ]

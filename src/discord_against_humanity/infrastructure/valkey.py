@@ -164,7 +164,7 @@ class ValkeyRepository(Repository):
         await self._client.set(
             self._doc_key(doc_id), json.dumps(document)
         )
-        await self._client.sadd(self._ids_key(), doc_id)
+        await self._client.sadd(self._ids_key(), doc_id)  # type: ignore[misc]
         for field in self._index_fields:
             if field in document:
                 await self._client.set(
@@ -212,11 +212,11 @@ class ValkeyRepository(Repository):
                         self._index_key(field, doc[field])
                     )
         await self._client.delete(self._doc_key(document_id))
-        await self._client.srem(self._ids_key(), document_id)
+        await self._client.srem(self._ids_key(), document_id)  # type: ignore[misc]
 
     async def random_member(self) -> dict[str, Any] | None:
         """Get a random document from the collection."""
-        doc_id = await self._client.srandmember(self._ids_key())
+        doc_id = await self._client.srandmember(self._ids_key())  # type: ignore[misc]
         if doc_id is None:
             return None
         if isinstance(doc_id, bytes):
@@ -225,7 +225,7 @@ class ValkeyRepository(Repository):
 
     async def count(self) -> int:
         """Count the number of documents in the collection."""
-        result = await self._client.scard(self._ids_key())
+        result = await self._client.scard(self._ids_key())  # type: ignore[misc]
         return int(result)
 
 

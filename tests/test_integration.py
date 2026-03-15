@@ -310,7 +310,6 @@ class TestBlackCardIntegration:
             ValkeyBlackCard,
         )
 
-        repo = ValkeyRepository(seeded_client, "black_cards")
         # Find the "pick 3" card by iterating through all cards
         all_ids = await seeded_client.smembers("black_cards:ids")
         pick3_id = None
