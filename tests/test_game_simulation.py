@@ -17,7 +17,6 @@ class InMemoryRepository:
 
     def __init__(self) -> None:
         self._store: dict[str, dict[str, Any]] = {}
-        self._counter = 0
 
     async def find_by_id(self, document_id: str) -> dict[str, Any] | None:
         doc = self._store.get(document_id)
@@ -31,7 +30,6 @@ class InMemoryRepository:
 
     async def insert(self, document: dict[str, Any]) -> str:
         if "_id" not in document or not document["_id"]:
-            self._counter += 1
             document["_id"] = str(uuid4())
         doc_id = document["_id"]
         self._store[doc_id] = dict(document)
