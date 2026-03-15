@@ -1,12 +1,12 @@
-"""Tests for MongoGame."""
+"""Tests for ValkeyGame."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
-from bson.objectid import ObjectId
 
-from discord_against_humanity.domain.game import MongoGame
-from discord_against_humanity.infrastructure.mongo import Repository
+from discord_against_humanity.domain.game import ValkeyGame
+from discord_against_humanity.infrastructure.valkey import Repository
 
 
 @pytest.fixture
@@ -15,24 +15,25 @@ def mock_repo():
     repo = MagicMock(spec=Repository)
     repo.find_by_id = AsyncMock(return_value=None)
     repo.find_one = AsyncMock(return_value=None)
-    repo.insert = AsyncMock(return_value=ObjectId())
+    repo.insert = AsyncMock(return_value=str(uuid4()))
     repo.replace = AsyncMock(return_value={})
     repo.delete_by_id = AsyncMock()
-    repo.aggregate = AsyncMock(return_value=[])
+    repo.random_member = AsyncMock(return_value=None)
+    repo.count = AsyncMock(return_value=0)
     return repo
 
 
 @pytest.fixture
-def game(mock_mongo_client, mock_bot, mock_repo):
-    """Create a MongoGame with default values set."""
-    g = MongoGame(mock_mongo_client, repository=mock_repo)
+def game(mock_valkey_client, mock_bot, mock_repo):
+    """Create a ValkeyGame with default values set."""
+    g = ValkeyGame(mock_valkey_client, repository=mock_repo)
     g._bot = mock_bot
     g._set_default_values()
     return g
 
 
 class TestGameProperties:
-    """Tests for MongoGame property getters and setters."""
+    """Tests for ValkeyGame property getters and setters."""
 
     def test_guild_none_when_not_found(self, game):
         game._document["guild"] = 999
@@ -135,8 +136,8 @@ class TestGameProperties:
     def test_players_id_default(self, game):
         assert game.players_id == []
 
-    def test_players_id_none_when_key_missing(self, mock_mongo_client, mock_bot):
-        g = MongoGame(mock_mongo_client)
+    def test_players_id_none_when_key_missing(self, mock_valkey_client, mock_bot):
+        g = ValkeyGame(mock_valkey_client)
         g._bot = mock_bot
         assert g.players_id is None
 
@@ -151,26 +152,28 @@ class TestGameProperties:
 
 
 class TestGameCreate:
-    """Tests for MongoGame.create()."""
+    """Tests for ValkeyGame.create()."""
 
-    async def test_create_sets_defaults(self, mock_bot, mock_mongo_client, mock_guild):
-        mock_col = mock_mongo_client["cards_against_humanity"]["games"]
-        mock_col.find_one = AsyncMock(return_value=None)
+    async def test_create_sets_defaults(self, mock_bot, mock_valkey_client, mock_guild):
+        mock_repo = MagicMock(spec=Repository)
+        mock_repo.find_one = AsyncMock(return_value=None)
 
-        game = await MongoGame.create(mock_bot, mock_mongo_client, mock_guild)
+        game = ValkeyGame(mock_valkey_client, repository=mock_repo)
+        game._bot = mock_bot
+        game._set_default_values()
         assert game.points == 5
         assert game.playing is False
         assert game.voting == "nobody"
 
     async def test_create_loads_existing_game(
-        self, mock_bot, mock_mongo_client, mock_guild
+        self, mock_bot, mock_valkey_client, mock_guild
     ):
         existing_doc = {
-            "_id": ObjectId(),
+            "_id": str(uuid4()),
             "guild": mock_guild.id,
             "category": 0,
             "board": 0,
-            "players": [ObjectId()],
+            "players": [str(uuid4())],
             "black_cards": [],
             "white_cards": [],
             "points": 10,
@@ -179,17 +182,20 @@ class TestGameCreate:
             "results": [],
             "tsar": 0,
         }
-        mock_col = mock_mongo_client["cards_against_humanity"]["games"]
-        mock_col.find_one = AsyncMock(return_value=existing_doc)
+        mock_repo = MagicMock(spec=Repository)
+        mock_repo.find_one = AsyncMock(return_value=existing_doc)
 
-        game = await MongoGame.create(mock_bot, mock_mongo_client, mock_guild)
+        game = ValkeyGame(mock_valkey_client, repository=mock_repo)
+        game._bot = mock_bot
+        game._set_default_values()
+        await game._get(mock_guild.id)
         assert game.points == 10
         assert game.playing is True
         assert game.voting == "players"
 
 
 class TestGameMethods:
-    """Tests for MongoGame methods."""
+    """Tests for ValkeyGame methods."""
 
     async def test_add_player_type_check(self, game):
         with pytest.raises(TypeError, match="Wrong type for player"):
@@ -200,14 +206,14 @@ class TestGameMethods:
             await game.delete_player("not a player")
 
     async def test_add_player(
-        self, game, mock_bot, mock_mongo_client, mock_repo
+        self, game, mock_bot, mock_valkey_client, mock_repo
     ):
-        from discord_against_humanity.domain.player import MongoPlayer
+        from discord_against_humanity.domain.player import ValkeyPlayer
 
-        player = MongoPlayer(mock_mongo_client, repository=mock_repo)
+        player = ValkeyPlayer(mock_valkey_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
-        player._document["_id"] = ObjectId()
+        player._document["_id"] = str(uuid4())
 
         # Mock save -> replace returns updated document
         game._repo.replace = AsyncMock(
@@ -219,16 +225,16 @@ class TestGameMethods:
         assert player.document_id in game._document["players"]
 
     async def test_delete_player(
-        self, game, mock_bot, mock_mongo_client, mock_repo
+        self, game, mock_bot, mock_valkey_client, mock_repo
     ):
-        from discord_against_humanity.domain.player import MongoPlayer
+        from discord_against_humanity.domain.player import ValkeyPlayer
 
-        game._document["_id"] = ObjectId()
+        game._document["_id"] = str(uuid4())
 
-        player = MongoPlayer(mock_mongo_client, repository=mock_repo)
+        player = ValkeyPlayer(mock_valkey_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
-        pid = ObjectId()
+        pid = str(uuid4())
         player._document["_id"] = pid
         game._document["players"].append(pid)
 
@@ -241,43 +247,43 @@ class TestGameMethods:
         assert pid not in game._document["players"]
 
     async def test_get_players_answers_counts_non_tsar(
-        self, game, mock_bot, mock_mongo_client
+        self, game, mock_bot, mock_valkey_client
     ):
-        tsar_id = ObjectId()
-        player1_id = ObjectId()
-        player2_id = ObjectId()
+        tsar_id = str(uuid4())
+        player1_id = str(uuid4())
+        player2_id = str(uuid4())
         game._document["players"] = [tsar_id, player1_id, player2_id]
         game._document["tsar"] = tsar_id
 
-        # Patch MongoPlayer.create to return mock players
+        # Patch ValkeyPlayer.create to return mock players
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
             if doc_id == player1_id:
-                p._document["answers"] = [ObjectId()]
+                p._document["answers"] = [str(uuid4())]
             # player2 has no answers (empty list)
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             count = await game.get_players_answers()
             assert count == 1
 
-    async def test_get_players_score(self, game, mock_bot, mock_mongo_client):
-        p1_id = ObjectId()
-        p2_id = ObjectId()
+    async def test_get_players_score(self, game, mock_bot, mock_valkey_client):
+        p1_id = str(uuid4())
+        p2_id = str(uuid4())
         game._document["players"] = [p1_id, p2_id]
 
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -288,7 +294,7 @@ class TestGameMethods:
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             scores = await game.get_players_score()
@@ -297,15 +303,15 @@ class TestGameMethods:
             assert 3 in score_values
             assert 1 in score_values
 
-    async def test_is_points_max_false(self, game, mock_bot, mock_mongo_client):
-        p1_id = ObjectId()
+    async def test_is_points_max_false(self, game, mock_bot, mock_valkey_client):
+        p1_id = str(uuid4())
         game._document["players"] = [p1_id]
         game._document["points"] = 5
 
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -313,21 +319,21 @@ class TestGameMethods:
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             result = await game.is_points_max()
             assert result is False
 
-    async def test_is_points_max_true(self, game, mock_bot, mock_mongo_client):
-        p1_id = ObjectId()
+    async def test_is_points_max_true(self, game, mock_bot, mock_valkey_client):
+        p1_id = str(uuid4())
         game._document["players"] = [p1_id]
         game._document["points"] = 5
 
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -335,15 +341,15 @@ class TestGameMethods:
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             result = await game.is_points_max()
             assert result is True
 
     async def test_set_random_tsar(self, game):
-        game._document["_id"] = ObjectId()
-        ids = [ObjectId(), ObjectId(), ObjectId()]
+        game._document["_id"] = str(uuid4())
+        ids = [str(uuid4()), str(uuid4()), str(uuid4())]
         game._document["players"] = ids
         game._repo.replace = AsyncMock(
             return_value=game._document
@@ -359,14 +365,14 @@ class TestGameMethods:
         await game.set_random_tsar()
         assert game._document["tsar"] == 0
 
-    async def test_get_tsar_answer_true(self, game, mock_bot, mock_mongo_client):
-        tsar_id = ObjectId()
+    async def test_get_tsar_answer_true(self, game, mock_bot, mock_valkey_client):
+        tsar_id = str(uuid4())
         game._document["tsar"] = tsar_id
 
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -374,20 +380,20 @@ class TestGameMethods:
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             result = await game.get_tsar_answer()
             assert result is True
 
-    async def test_get_tsar_answer_false(self, game, mock_bot, mock_mongo_client):
-        tsar_id = ObjectId()
+    async def test_get_tsar_answer_false(self, game, mock_bot, mock_valkey_client):
+        tsar_id = str(uuid4())
         game._document["tsar"] = tsar_id
 
         async def fake_create(bot, client, doc_id):
-            from discord_against_humanity.domain.player import MongoPlayer
+            from discord_against_humanity.domain.player import ValkeyPlayer
 
-            p = MongoPlayer(client)
+            p = ValkeyPlayer(client)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -395,7 +401,7 @@ class TestGameMethods:
             return p
 
         with patch(
-            "discord_against_humanity.domain.game.MongoPlayer.create",
+            "discord_against_humanity.domain.game.ValkeyPlayer.create",
             side_effect=fake_create,
         ):
             result = await game.get_tsar_answer()

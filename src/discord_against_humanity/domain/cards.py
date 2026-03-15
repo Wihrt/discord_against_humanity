@@ -3,20 +3,19 @@
 import logging
 from typing import Self
 
+import valkey.asyncio as valkey
 from html2text import html2text
-from motor.motor_asyncio import AsyncIOMotorClient
 
-from discord_against_humanity.infrastructure.mongo import MongoDocument
+from discord_against_humanity.infrastructure.valkey import ValkeyDocument
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PICK = 1
 
 
-class MongoBlackCard(MongoDocument):
-    """Data class for a Black Card (question) MongoDB document."""
+class ValkeyBlackCard(ValkeyDocument):
+    """Data class for a Black Card (question) Valkey document."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "black_cards"
 
     @property
@@ -48,28 +47,27 @@ class MongoBlackCard(MongoDocument):
     @classmethod
     async def create(
         cls,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
-        document_id: object = None,
+        valkey_client: valkey.Valkey,
+        document_id: str | None = None,
     ) -> Self:
-        """Create a new MongoBlackCard instance.
+        """Create a new ValkeyBlackCard instance.
 
         Args:
-            mongo_client: Motor client connected to the database.
-            document_id: Optional ObjectId of the document to load.
+            valkey_client: Async Valkey client.
+            document_id: Optional ID of the document to load.
 
         Returns:
-            A new MongoBlackCard instance.
+            A new ValkeyBlackCard instance.
         """
-        self = MongoBlackCard(mongo_client)
+        self = ValkeyBlackCard(valkey_client)
         if document_id:
             await self.get(document_id)
         return self
 
 
-class MongoWhiteCard(MongoDocument):
-    """Data class for a White Card (answer) MongoDB document."""
+class ValkeyWhiteCard(ValkeyDocument):
+    """Data class for a White Card (answer) Valkey document."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "white_cards"
 
     @property
@@ -87,19 +85,19 @@ class MongoWhiteCard(MongoDocument):
     @classmethod
     async def create(
         cls,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
-        document_id: object = None,
+        valkey_client: valkey.Valkey,
+        document_id: str | None = None,
     ) -> Self:
-        """Create a new MongoWhiteCard instance.
+        """Create a new ValkeyWhiteCard instance.
 
         Args:
-            mongo_client: Motor client connected to the database.
-            document_id: Optional ObjectId of the document to load.
+            valkey_client: Async Valkey client.
+            document_id: Optional ID of the document to load.
 
         Returns:
-            A new MongoWhiteCard instance.
+            A new ValkeyWhiteCard instance.
         """
-        self = MongoWhiteCard(mongo_client)
+        self = ValkeyWhiteCard(valkey_client)
         if document_id:
             await self.get(document_id)
         return self

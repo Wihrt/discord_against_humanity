@@ -28,8 +28,8 @@ RUN groupadd --gid 1000 bot && \
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MONGO_HOST=mongo \
-    MONGO_PORT=27017
+    VALKEY_HOST=valkey \
+    VALKEY_PORT=6379
 
 WORKDIR /app
 

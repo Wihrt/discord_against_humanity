@@ -5,13 +5,13 @@ from asyncio import sleep
 from random import sample, shuffle
 from typing import Any, Self
 
+import valkey.asyncio as valkey
 from discord import CategoryChannel, Guild, TextChannel
 from discord.ext.commands import Bot
-from motor.motor_asyncio import AsyncIOMotorClient
 
-from discord_against_humanity.domain.cards import MongoBlackCard
-from discord_against_humanity.domain.player import MongoPlayer
-from discord_against_humanity.infrastructure.mongo import MongoDocument
+from discord_against_humanity.domain.cards import ValkeyBlackCard
+from discord_against_humanity.domain.player import ValkeyPlayer
+from discord_against_humanity.infrastructure.valkey import ValkeyDocument
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -21,10 +21,9 @@ _MAX_DRAW_ATTEMPTS = 200
 _POLL_INTERVAL = 5
 
 
-class MongoGame(MongoDocument):
-    """MongoDB document class for a Cards Against Humanity game."""
+class ValkeyGame(ValkeyDocument):
+    """Valkey document class for a Cards Against Humanity game."""
 
-    _DATABASE = "cards_against_humanity"
     _COLLECTION = "games"
 
     # Properties
@@ -197,10 +196,10 @@ class MongoGame(MongoDocument):
 
     @property
     def players_id(self) -> list[Any] | None:
-        """Get the list of player ObjectIds.
+        """Get the list of player IDs.
 
         Returns:
-            List of player ObjectIds, or None.
+            List of player IDs, or None.
         """
         try:
             return self._document["players"]
@@ -209,10 +208,10 @@ class MongoGame(MongoDocument):
 
     @property
     def black_cards_id(self) -> list[Any] | None:
-        """Get the list of used Black Card ObjectIds.
+        """Get the list of used Black Card IDs.
 
         Returns:
-            List of used black card ObjectIds, or None.
+            List of used black card IDs, or None.
         """
         try:
             return self._document["black_cards"]
@@ -221,10 +220,10 @@ class MongoGame(MongoDocument):
 
     @property
     def white_cards_id(self) -> list[Any] | None:
-        """Get the list of used White Card ObjectIds.
+        """Get the list of used White Card IDs.
 
         Returns:
-            List of used white card ObjectIds, or None.
+            List of used white card IDs, or None.
         """
         try:
             return self._document["white_cards"]
@@ -233,10 +232,10 @@ class MongoGame(MongoDocument):
 
     @property
     def tsar_id(self) -> Any | None:
-        """Get the current Tsar's ObjectId.
+        """Get the current Tsar's ID.
 
         Returns:
-            The tsar's ObjectId, or None.
+            The tsar's ID, or None.
         """
         try:
             return self._document["tsar"]
@@ -250,20 +249,20 @@ class MongoGame(MongoDocument):
     async def create(
         cls,
         discord_bot: Bot,
-        mongo_client: AsyncIOMotorClient,  # type: ignore[type-arg]
+        valkey_client: valkey.Valkey,
         guild: Guild,
     ) -> Self:
-        """Create a new MongoGame instance.
+        """Create a new ValkeyGame instance.
 
         Args:
             discord_bot: The Discord bot instance.
-            mongo_client: Motor client connected to the database.
+            valkey_client: Async Valkey client.
             guild: The Discord guild for this game.
 
         Returns:
-            A new MongoGame instance.
+            A new ValkeyGame instance.
         """
-        self = MongoGame(mongo_client)
+        self = ValkeyGame(valkey_client)
         self._bot = discord_bot
         self._set_default_values()
         await self._get(guild.id)
@@ -297,7 +296,7 @@ class MongoGame(MongoDocument):
         self._document["tsar"] = 0
 
     async def _reload(self) -> None:
-        """Reload the game state from MongoDB."""
+        """Reload the game state from Valkey."""
         if self.document_id:
             await self.get(self.document_id)
 
@@ -305,46 +304,46 @@ class MongoGame(MongoDocument):
     # -------------------------------------------------------------------------
 
     @async_log_event
-    async def get_players(self) -> list[MongoPlayer]:
+    async def get_players(self) -> list[ValkeyPlayer]:
         """Get all players in this game.
 
         Returns:
-            List of MongoPlayer instances.
+            List of ValkeyPlayer instances.
         """
-        players: list[MongoPlayer] = []
+        players: list[ValkeyPlayer] = []
         for player_id in self.players_id:  # type: ignore[union-attr]
-            player = await MongoPlayer.create(
+            player = await ValkeyPlayer.create(
                 self._bot, self._client, player_id
             )
             players.append(player)
         return players
 
     @async_log_event
-    async def add_player(self, player: MongoPlayer) -> None:
+    async def add_player(self, player: ValkeyPlayer) -> None:
         """Add a player to the game.
 
         Args:
             player: The player to add.
 
         Raises:
-            TypeError: If player is not a MongoPlayer.
+            TypeError: If player is not a ValkeyPlayer.
         """
-        if not isinstance(player, MongoPlayer):
+        if not isinstance(player, ValkeyPlayer):
             raise TypeError("Wrong type for player")
         self._document["players"].append(player.document_id)
         await self.save()
 
     @async_log_event
-    async def delete_player(self, player: MongoPlayer) -> None:
+    async def delete_player(self, player: ValkeyPlayer) -> None:
         """Remove a player from the game.
 
         Args:
             player: The player to remove.
 
         Raises:
-            TypeError: If player is not a MongoPlayer.
+            TypeError: If player is not a ValkeyPlayer.
         """
-        if not isinstance(player, MongoPlayer):
+        if not isinstance(player, ValkeyPlayer):
             raise TypeError("Wrong type for player")
         self._document["players"].remove(player.document_id)
         await self.save()
@@ -404,14 +403,14 @@ class MongoGame(MongoDocument):
         await self.board.send(embed=message)  # type: ignore[union-attr]
 
     @async_log_event
-    async def get_black_card(self) -> MongoBlackCard:
+    async def get_black_card(self) -> ValkeyBlackCard:
         """Get the last drawn black card.
 
         Returns:
-            The most recently drawn MongoBlackCard.
+            The most recently drawn ValkeyBlackCard.
         """
         black_card_id = self.black_cards_id[-1]  # type: ignore[index]
-        black_card = await MongoBlackCard.create(
+        black_card = await ValkeyBlackCard.create(
             self._client, black_card_id
         )
         return black_card
@@ -426,14 +425,14 @@ class MongoGame(MongoDocument):
         Raises:
             RuntimeError: If no new card can be drawn after max attempts.
         """
-        from discord_against_humanity.infrastructure.mongo import (
-            MongoRepository,
+        from discord_against_humanity.infrastructure.valkey import (
+            ValkeyRepository,
         )
 
         attempts = 0
         card_number = len(self.black_cards_id)  # type: ignore[arg-type]
-        bc_repo = MongoRepository(
-            self._client, self._DATABASE, "black_cards"
+        bc_repo = ValkeyRepository(
+            self._client, "black_cards"
         )
         while len(self.black_cards_id) == card_number:  # type: ignore[arg-type]
             attempts += 1
@@ -442,10 +441,8 @@ class MongoGame(MongoDocument):
                     "Could not draw a new black card: "
                     "deck may be exhausted"
                 )
-            results = await bc_repo.aggregate(
-                [{"$sample": {"size": 1}}]
-            )
-            for document in results:
+            document = await bc_repo.random_member()
+            if document is not None:
                 if document["_id"] not in self.black_cards_id:  # type: ignore[operator]
                     self._document["black_cards"].append(
                         document["_id"]
@@ -462,13 +459,13 @@ class MongoGame(MongoDocument):
         return message
 
     @async_log_event
-    async def get_tsar(self) -> MongoPlayer:
+    async def get_tsar(self) -> ValkeyPlayer:
         """Get the current tsar player.
 
         Returns:
-            The tsar MongoPlayer instance.
+            The tsar ValkeyPlayer instance.
         """
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self._bot, self._client, self.tsar_id
         )
         return player
@@ -594,7 +591,7 @@ class MongoGame(MongoDocument):
         await tsar.delete_choice()
 
         player_id = self._document["results"][tsar_choice - 1][0]
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self._bot, self._client, player_id
         )
         player.score += 1

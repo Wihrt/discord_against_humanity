@@ -9,9 +9,9 @@ from traceback import print_tb
 from typing import Any
 
 import discord
+import valkey.asyncio as valkey
 from discord import Color, app_commands
 from discord.ext.commands import Bot
-from motor.motor_asyncio import AsyncIOMotorClient
 
 from discord_against_humanity.utils.embed import create_embed
 
@@ -40,9 +40,10 @@ def create_bot() -> Bot:
     intents.members = True
 
     bot = Bot(command_prefix="!", intents=intents)
-    bot.mongo = AsyncIOMotorClient(  # type: ignore[attr-defined]
-        host=environ.get("MONGO_HOST", "localhost"),
-        port=int(environ.get("MONGO_PORT", "27017")),
+    bot.valkey = valkey.Valkey(  # type: ignore[attr-defined]
+        host=environ.get("VALKEY_HOST", "localhost"),
+        port=int(environ.get("VALKEY_PORT", "6379")),
+        decode_responses=True,
     )
 
     @bot.event

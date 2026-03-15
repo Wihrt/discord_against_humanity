@@ -21,8 +21,8 @@ from discord_against_humanity.checks.game_checks import (
     is_tsar_voting,
     no_game_exists,
 )
-from discord_against_humanity.domain.game import MongoGame
-from discord_against_humanity.domain.player import MongoPlayer
+from discord_against_humanity.domain.game import ValkeyGame
+from discord_against_humanity.domain.player import ValkeyPlayer
 from discord_against_humanity.utils.embed import create_embed
 
 logger = logging.getLogger("discord_against_humanity.commands")
@@ -38,7 +38,7 @@ class CardsAgainstHumanity(commands.Cog):
             bot: The Discord bot instance.
         """
         self.bot = bot
-        self.mongo_client = self.bot.mongo  # type: ignore[attr-defined]
+        self.valkey_client = self.bot.valkey  # type: ignore[attr-defined]
 
     # Slash Commands
     # -------------------------------------------------------------------------
@@ -69,8 +69,8 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         permissions = self._default_permission(interaction.guild)
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         game.guild = interaction.guild
         game.category = await interaction.guild.create_category(
@@ -98,8 +98,8 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         players = await game.get_players()
         for player in players:
@@ -131,12 +131,12 @@ class CardsAgainstHumanity(commands.Cog):
         user_permissions = PermissionOverwrite(
             read_messages=True, send_messages=True
         )
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self.bot,
-            self.bot.mongo,  # type: ignore[attr-defined]
+            self.bot.valkey,  # type: ignore[attr-defined]
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -173,12 +173,12 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self.bot,
-            self.bot.mongo,  # type: ignore[attr-defined]
+            self.bot.valkey,  # type: ignore[attr-defined]
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -218,8 +218,8 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         game.playing = True
         game.points = points
@@ -267,8 +267,8 @@ class CardsAgainstHumanity(commands.Cog):
             interaction: The Discord interaction.
         """
         assert interaction.guild is not None
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         game.playing = False
         await game.save()
@@ -297,12 +297,12 @@ class CardsAgainstHumanity(commands.Cog):
             answers: Space-separated card numbers to vote for.
         """
         assert interaction.guild is not None
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self.bot,
-            self.bot.mongo,  # type: ignore[attr-defined]
+            self.bot.valkey,  # type: ignore[attr-defined]
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -351,12 +351,12 @@ class CardsAgainstHumanity(commands.Cog):
             answer: The answer number to select.
         """
         assert interaction.guild is not None
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
-        player = await MongoPlayer.create(
+        player = await ValkeyPlayer.create(
             self.bot,
-            self.bot.mongo,  # type: ignore[attr-defined]
+            self.bot.valkey,  # type: ignore[attr-defined]
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -387,8 +387,8 @@ class CardsAgainstHumanity(commands.Cog):
             interaction: The Discord interaction.
         """
         assert interaction.guild is not None
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         await game.score()
         await interaction.response.send_message(
@@ -451,8 +451,8 @@ class CardsAgainstHumanity(commands.Cog):
             interaction: The Discord interaction.
         """
         assert interaction.guild is not None
-        game = await MongoGame.create(
-            self.bot, self.bot.mongo, interaction.guild  # type: ignore[attr-defined]
+        game = await ValkeyGame.create(
+            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
         )
         players = await game.get_players()
         for player in players:

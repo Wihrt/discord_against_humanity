@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Stage 1 – Build (install valkey-py in a venv)
+# ---------------------------------------------------------------------------
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+# Create a minimal pyproject for the seed tool
+RUN cat > pyproject.toml <<'EOF'
+[project]
+name = "cah-seed"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = ["valkey>=6.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+EOF
+
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ---------------------------------------------------------------------------
+# Stage 2 – Runtime (seed the Valkey database)
+# ---------------------------------------------------------------------------
+FROM python:3.13-slim-bookworm AS runtime
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VALKEY_HOST=valkey \
+    VALKEY_PORT=6379
+
+COPY scripts/seed_valkey.py /app/seed_valkey.py
+COPY seed/ /app/seed/
+
+CMD ["python", "/app/seed_valkey.py"]
