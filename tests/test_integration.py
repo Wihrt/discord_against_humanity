@@ -26,7 +26,7 @@ try:
     from testcontainers.core.waiting_utils import wait_for_logs
 
     docker.from_env().ping()
-except (ImportError, Exception):
+except (ImportError, docker.errors.DockerException, ConnectionError):
     _can_use_docker = False
 
 pytestmark = pytest.mark.skipif(
