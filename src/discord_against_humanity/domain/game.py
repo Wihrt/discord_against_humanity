@@ -9,9 +9,9 @@ import valkey.asyncio as valkey
 from discord import CategoryChannel, Guild, TextChannel
 from discord.ext.commands import Bot
 
-from discord_against_humanity.domain.cards import ValkeyBlackCard
-from discord_against_humanity.domain.player import ValkeyPlayer
-from discord_against_humanity.infrastructure.valkey import ValkeyDocument
+from discord_against_humanity.domain.cards import BlackCard
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.domain.player import Player
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -21,8 +21,8 @@ _MAX_DRAW_ATTEMPTS = 200
 _POLL_INTERVAL = 5
 
 
-class ValkeyGame(ValkeyDocument):
-    """Valkey document class for a Cards Against Humanity game."""
+class Game(Document):
+    """Document class for a Cards Against Humanity game."""
 
     _COLLECTION = "games"
 
@@ -252,7 +252,7 @@ class ValkeyGame(ValkeyDocument):
         valkey_client: valkey.Valkey,
         guild: Guild,
     ) -> Self:
-        """Create a new ValkeyGame instance.
+        """Create a new Game instance.
 
         Args:
             discord_bot: The Discord bot instance.
@@ -260,9 +260,9 @@ class ValkeyGame(ValkeyDocument):
             guild: The Discord guild for this game.
 
         Returns:
-            A new ValkeyGame instance.
+            A new Game instance.
         """
-        self = ValkeyGame(valkey_client)
+        self = Game(valkey_client)
         self._bot = discord_bot
         self._set_default_values()
         await self._get(guild.id)
@@ -304,46 +304,46 @@ class ValkeyGame(ValkeyDocument):
     # -------------------------------------------------------------------------
 
     @async_log_event
-    async def get_players(self) -> list[ValkeyPlayer]:
+    async def get_players(self) -> list[Player]:
         """Get all players in this game.
 
         Returns:
-            List of ValkeyPlayer instances.
+            List of Player instances.
         """
-        players: list[ValkeyPlayer] = []
+        players: list[Player] = []
         for player_id in self.players_id:  # type: ignore[union-attr]
-            player = await ValkeyPlayer.create(
+            player = await Player.create(
                 self._bot, self._client, player_id
             )
             players.append(player)
         return players
 
     @async_log_event
-    async def add_player(self, player: ValkeyPlayer) -> None:
+    async def add_player(self, player: Player) -> None:
         """Add a player to the game.
 
         Args:
             player: The player to add.
 
         Raises:
-            TypeError: If player is not a ValkeyPlayer.
+            TypeError: If player is not a Player.
         """
-        if not isinstance(player, ValkeyPlayer):
+        if not isinstance(player, Player):
             raise TypeError("Wrong type for player")
         self._document["players"].append(player.document_id)
         await self.save()
 
     @async_log_event
-    async def delete_player(self, player: ValkeyPlayer) -> None:
+    async def delete_player(self, player: Player) -> None:
         """Remove a player from the game.
 
         Args:
             player: The player to remove.
 
         Raises:
-            TypeError: If player is not a ValkeyPlayer.
+            TypeError: If player is not a Player.
         """
-        if not isinstance(player, ValkeyPlayer):
+        if not isinstance(player, Player):
             raise TypeError("Wrong type for player")
         self._document["players"].remove(player.document_id)
         await self.save()
@@ -403,14 +403,14 @@ class ValkeyGame(ValkeyDocument):
         await self.board.send(embed=message)  # type: ignore[union-attr]
 
     @async_log_event
-    async def get_black_card(self) -> ValkeyBlackCard:
+    async def get_black_card(self) -> BlackCard:
         """Get the last drawn black card.
 
         Returns:
-            The most recently drawn ValkeyBlackCard.
+            The most recently drawn BlackCard.
         """
         black_card_id = self.black_cards_id[-1]  # type: ignore[index]
-        black_card = await ValkeyBlackCard.create(
+        black_card = await BlackCard.create(
             self._client, black_card_id
         )
         return black_card
@@ -425,7 +425,7 @@ class ValkeyGame(ValkeyDocument):
         Raises:
             RuntimeError: If no new card can be drawn after max attempts.
         """
-        from discord_against_humanity.infrastructure.valkey import (
+        from discord_against_humanity.adapters.valkey import (
             ValkeyRepository,
         )
 
@@ -459,13 +459,13 @@ class ValkeyGame(ValkeyDocument):
         return message
 
     @async_log_event
-    async def get_tsar(self) -> ValkeyPlayer:
+    async def get_tsar(self) -> Player:
         """Get the current tsar player.
 
         Returns:
-            The tsar ValkeyPlayer instance.
+            The tsar Player instance.
         """
-        player = await ValkeyPlayer.create(
+        player = await Player.create(
             self._bot, self._client, self.tsar_id
         )
         return player
@@ -591,7 +591,7 @@ class ValkeyGame(ValkeyDocument):
         await tsar.delete_choice()
 
         player_id = self._document["results"][tsar_choice - 1][0]
-        player = await ValkeyPlayer.create(
+        player = await Player.create(
             self._bot, self._client, player_id
         )
         player.score += 1

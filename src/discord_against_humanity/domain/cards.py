@@ -6,15 +6,15 @@ from typing import Self
 import valkey.asyncio as valkey
 from html2text import html2text
 
-from discord_against_humanity.infrastructure.valkey import ValkeyDocument
+from discord_against_humanity.domain.document import Document
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PICK = 1
 
 
-class ValkeyBlackCard(ValkeyDocument):
-    """Data class for a Black Card (question) Valkey document."""
+class BlackCard(Document):
+    """Data class for a Black Card (question) document."""
 
     _COLLECTION = "black_cards"
 
@@ -50,23 +50,23 @@ class ValkeyBlackCard(ValkeyDocument):
         valkey_client: valkey.Valkey,
         document_id: str | None = None,
     ) -> Self:
-        """Create a new ValkeyBlackCard instance.
+        """Create a new BlackCard instance.
 
         Args:
             valkey_client: Async Valkey client.
             document_id: Optional ID of the document to load.
 
         Returns:
-            A new ValkeyBlackCard instance.
+            A new BlackCard instance.
         """
-        self = ValkeyBlackCard(valkey_client)
+        self = BlackCard(valkey_client)
         if document_id:
             await self.get(document_id)
         return self
 
 
-class ValkeyWhiteCard(ValkeyDocument):
-    """Data class for a White Card (answer) Valkey document."""
+class WhiteCard(Document):
+    """Data class for a White Card (answer) document."""
 
     _COLLECTION = "white_cards"
 
@@ -88,16 +88,16 @@ class ValkeyWhiteCard(ValkeyDocument):
         valkey_client: valkey.Valkey,
         document_id: str | None = None,
     ) -> Self:
-        """Create a new ValkeyWhiteCard instance.
+        """Create a new WhiteCard instance.
 
         Args:
             valkey_client: Async Valkey client.
             document_id: Optional ID of the document to load.
 
         Returns:
-            A new ValkeyWhiteCard instance.
+            A new WhiteCard instance.
         """
-        self = ValkeyWhiteCard(valkey_client)
+        self = WhiteCard(valkey_client)
         if document_id:
             await self.get(document_id)
         return self

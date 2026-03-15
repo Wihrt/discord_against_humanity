@@ -8,8 +8,8 @@ import valkey.asyncio as valkey
 from discord import Guild, Member, TextChannel
 from discord.ext.commands import Bot
 
-from discord_against_humanity.domain.cards import ValkeyWhiteCard
-from discord_against_humanity.infrastructure.valkey import ValkeyDocument
+from discord_against_humanity.domain.cards import WhiteCard
+from discord_against_humanity.domain.document import Document
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 _WHITE_CARDS_NUMBER = 7
 
 
-class ValkeyPlayer(ValkeyDocument):
-    """Valkey document class for a Cards Against Humanity player."""
+class Player(Document):
+    """Document class for a Cards Against Humanity player."""
 
     _COLLECTION = "players"
 
@@ -198,7 +198,7 @@ class ValkeyPlayer(ValkeyDocument):
         user: Member | discord.User | None = None,
         guild: Guild | None = None,
     ) -> Self:
-        """Create a new ValkeyPlayer instance.
+        """Create a new Player instance.
 
         Args:
             discord_bot: The Discord bot instance.
@@ -208,9 +208,9 @@ class ValkeyPlayer(ValkeyDocument):
             guild: Optional Discord Guild to resolve member from user.
 
         Returns:
-            A new ValkeyPlayer instance.
+            A new Player instance.
         """
-        self = ValkeyPlayer(valkey_client)
+        self = Player(valkey_client)
         self._bot = discord_bot
         self._set_default_values()
         if document_id:
@@ -259,15 +259,15 @@ class ValkeyPlayer(ValkeyDocument):
     # -------------------------------------------------------------------------
 
     @async_log_event
-    async def get_white_cards(self) -> list[ValkeyWhiteCard]:
+    async def get_white_cards(self) -> list[WhiteCard]:
         """Get the white cards in this player's hand.
 
         Returns:
-            List of ValkeyWhiteCard instances.
+            List of WhiteCard instances.
         """
-        cards: list[ValkeyWhiteCard] = []
+        cards: list[WhiteCard] = []
         for card_id in self.white_cards_id:  # type: ignore[union-attr]
-            card = await ValkeyWhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._client, card_id)
             cards.append(card)
         return cards
 
@@ -283,7 +283,7 @@ class ValkeyPlayer(ValkeyDocument):
         Args:
             used_cards: List of IDs for already-used cards.
         """
-        from discord_against_humanity.infrastructure.valkey import (
+        from discord_against_humanity.adapters.valkey import (
             ValkeyRepository,
         )
 
@@ -325,15 +325,15 @@ class ValkeyPlayer(ValkeyDocument):
         await self.channel.send(embed=embed)  # type: ignore[union-attr]
 
     @async_log_event
-    async def get_answers(self) -> list[ValkeyWhiteCard]:
+    async def get_answers(self) -> list[WhiteCard]:
         """Get the white cards selected as answers.
 
         Returns:
-            List of ValkeyWhiteCard instances.
+            List of WhiteCard instances.
         """
-        cards: list[ValkeyWhiteCard] = []
+        cards: list[WhiteCard] = []
         for card_id in self.answers_id:  # type: ignore[union-attr]
-            card = await ValkeyWhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._client, card_id)
             cards.append(card)
         return cards
 

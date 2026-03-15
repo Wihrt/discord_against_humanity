@@ -1,20 +1,20 @@
-"""Tests for the ValkeyDocument base class and Repository pattern."""
+"""Tests for the Document base class and Repository pattern."""
 
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
-from discord_against_humanity.infrastructure.valkey import (
+from discord_against_humanity.adapters.valkey import ValkeyRepository
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import (
     DocumentNotFoundError,
     Repository,
-    ValkeyDocument,
-    ValkeyRepository,
 )
 
 
-class ConcreteDocument(ValkeyDocument):
-    """Concrete subclass for testing the abstract ValkeyDocument."""
+class ConcreteDocument(Document):
+    """Concrete subclass for testing the abstract Document."""
 
     _COLLECTION = "test_collection"
 
@@ -83,7 +83,7 @@ class TestInit:
         assert doc._document == {}
 
     def test_raises_if_collection_not_set(self, mock_valkey_client):
-        class BadDoc(ValkeyDocument):
+        class BadDoc(Document):
             _COLLECTION = ""
 
             @classmethod

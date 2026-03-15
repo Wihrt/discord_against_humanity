@@ -1,12 +1,12 @@
-"""Tests for ValkeyPlayer."""
+"""Tests for Player."""
 
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
-from discord_against_humanity.domain.player import ValkeyPlayer
-from discord_against_humanity.infrastructure.valkey import Repository
+from discord_against_humanity.domain.player import Player
+from discord_against_humanity.ports.repository import Repository
 
 
 @pytest.fixture
@@ -25,15 +25,15 @@ def mock_repo():
 
 @pytest.fixture
 def player(mock_valkey_client, mock_bot, mock_repo):
-    """Create a ValkeyPlayer with default values set."""
-    p = ValkeyPlayer(mock_valkey_client, repository=mock_repo)
+    """Create a Player with default values set."""
+    p = Player(mock_valkey_client, repository=mock_repo)
     p._bot = mock_bot
     p._set_default_values()
     return p
 
 
 class TestPlayerProperties:
-    """Tests for ValkeyPlayer property getters and setters."""
+    """Tests for Player property getters and setters."""
 
     def test_guild_none_when_not_found(self, player):
         player._document["guild"] = 999
@@ -121,7 +121,7 @@ class TestPlayerProperties:
         assert player.white_cards_id == []
 
     def test_white_cards_id_none_when_key_missing(self, mock_valkey_client, mock_bot):
-        p = ValkeyPlayer(mock_valkey_client)
+        p = Player(mock_valkey_client)
         p._bot = mock_bot
         assert p.white_cards_id is None
 
@@ -129,19 +129,19 @@ class TestPlayerProperties:
         assert player.answers_id == []
 
     def test_answers_id_none_when_key_missing(self, mock_valkey_client, mock_bot):
-        p = ValkeyPlayer(mock_valkey_client)
+        p = Player(mock_valkey_client)
         p._bot = mock_bot
         assert p.answers_id is None
 
 
 class TestPlayerCreate:
-    """Tests for ValkeyPlayer.create()."""
+    """Tests for Player.create()."""
 
     async def test_create_sets_defaults(self, mock_bot, mock_valkey_client):
         mock_repo = MagicMock(spec=Repository)
         mock_repo.find_one = AsyncMock(return_value=None)
 
-        player = ValkeyPlayer(mock_valkey_client, repository=mock_repo)
+        player = Player(mock_valkey_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
         assert player.score == 0
@@ -166,7 +166,7 @@ class TestPlayerCreate:
             return_value=json.dumps(doc_data)
         )
 
-        player = await ValkeyPlayer.create(
+        player = await Player.create(
             mock_bot, mock_valkey_client, document_id=doc_id
         )
         assert player.document_id == doc_id
@@ -190,7 +190,7 @@ class TestPlayerCreate:
         )
         mock_repo.find_by_id = AsyncMock(return_value=None)
 
-        player = ValkeyPlayer(mock_valkey_client, repository=mock_repo)
+        player = Player(mock_valkey_client, repository=mock_repo)
         player._bot = mock_bot
         player._set_default_values()
         await player._get(mock_member)
@@ -198,7 +198,7 @@ class TestPlayerCreate:
 
 
 class TestPlayerMethods:
-    """Tests for ValkeyPlayer methods."""
+    """Tests for Player methods."""
 
     async def test_add_answers(self, player, mock_repo):
         card_ids = [str(uuid4()) for _ in range(5)]

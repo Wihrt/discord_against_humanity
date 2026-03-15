@@ -4,8 +4,8 @@ import logging
 
 import discord
 
-from discord_against_humanity.domain.game import ValkeyGame
-from discord_against_humanity.domain.player import ValkeyPlayer
+from discord_against_humanity.domain.game import Game
+from discord_against_humanity.domain.player import Player
 from discord_against_humanity.utils.debug import async_log_event
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ async def game_exists(interaction: discord.Interaction) -> bool:
         True if a game exists.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     return game.document_id is not None
@@ -54,7 +54,7 @@ async def no_game_exists(interaction: discord.Interaction) -> bool:
         True if no game exists.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     return game.document_id is None
@@ -71,10 +71,10 @@ async def is_player(interaction: discord.Interaction) -> bool:
         True if the user is a player.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
-    player = await ValkeyPlayer.create(
+    player = await Player.create(
         interaction.client,
         interaction.client.valkey,  # type: ignore[attr-defined]
         user=interaction.user,
@@ -96,10 +96,10 @@ async def is_not_player(interaction: discord.Interaction) -> bool:
         True if the user is not a player.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
-    player = await ValkeyPlayer.create(
+    player = await Player.create(
         interaction.client,
         interaction.client.valkey,  # type: ignore[attr-defined]
         user=interaction.user,
@@ -121,7 +121,7 @@ async def game_playing(interaction: discord.Interaction) -> bool:
         True if the game is playing.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     logger.debug("Result of game_playing: %s", game.playing)
@@ -139,7 +139,7 @@ async def game_not_playing(interaction: discord.Interaction) -> bool:
         True if the game is not playing.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     logger.debug("Result of game_not_playing: %s", not game.playing)
@@ -157,7 +157,7 @@ async def is_enough_players(interaction: discord.Interaction) -> bool:
         True if there are at least 2 players.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     result = len(game.players_id) >= 2  # type: ignore[arg-type]
@@ -176,7 +176,7 @@ async def from_user_channel(interaction: discord.Interaction) -> bool:
         True if the command was sent from the user's channel.
     """
     assert interaction.guild is not None
-    player = await ValkeyPlayer.create(
+    player = await Player.create(
         interaction.client,
         interaction.client.valkey,  # type: ignore[attr-defined]
         user=interaction.user,
@@ -198,7 +198,7 @@ async def is_players_voting(interaction: discord.Interaction) -> bool:
         True if the voting phase is for players.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     result = game.voting == "players"
@@ -217,7 +217,7 @@ async def is_tsar_voting(interaction: discord.Interaction) -> bool:
         True if the voting phase is for the tsar.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
     result = game.voting == "tsar"
@@ -236,10 +236,10 @@ async def is_tsar(interaction: discord.Interaction) -> bool:
         True if the user is the tsar.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
-    player = await ValkeyPlayer.create(
+    player = await Player.create(
         interaction.client,
         interaction.client.valkey,  # type: ignore[attr-defined]
         user=interaction.user,
@@ -261,10 +261,10 @@ async def is_not_tsar(interaction: discord.Interaction) -> bool:
         True if the user is not the tsar.
     """
     assert interaction.guild is not None
-    game = await ValkeyGame.create(
+    game = await Game.create(
         interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
     )
-    player = await ValkeyPlayer.create(
+    player = await Player.create(
         interaction.client,
         interaction.client.valkey,  # type: ignore[attr-defined]
         user=interaction.user,

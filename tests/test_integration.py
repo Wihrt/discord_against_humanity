@@ -9,10 +9,8 @@ import json
 
 import pytest
 
-from discord_against_humanity.infrastructure.valkey import (
-    DocumentNotFoundError,
-    ValkeyRepository,
-)
+from discord_against_humanity.adapters.valkey import ValkeyRepository
+from discord_against_humanity.ports.repository import DocumentNotFoundError
 
 # ---------------------------------------------------------------------------
 # Testcontainers fixture
@@ -97,9 +95,11 @@ def valkey_client(valkey_container):
 
 @pytest.fixture
 def repository(valkey_client):
-    """Create a ValkeyRepository using the test container."""
+    """Create a ValkeyRepository with a unique collection per test."""
+    from uuid import uuid4
+
     return ValkeyRepository(
-        valkey_client, "test_collection"
+        valkey_client, f"test_collection_{uuid4().hex[:8]}"
     )
 
 
@@ -233,20 +233,18 @@ class TestValkeyRepositoryIntegration:
 
 
 # ---------------------------------------------------------------------------
-# ValkeyDocument integration tests
+# Document integration tests
 # ---------------------------------------------------------------------------
 
 
-class TestValkeyDocumentIntegration:
-    """Integration tests for ValkeyDocument save/get/delete cycle."""
+class TestDocumentIntegration:
+    """Integration tests for Document save/get/delete cycle."""
 
     async def test_save_get_delete_cycle(self, valkey_client):
         """Full lifecycle: save, get, and delete a document."""
-        from discord_against_humanity.infrastructure.valkey import (
-            ValkeyDocument,
-        )
+        from discord_against_humanity.domain.document import Document
 
-        class TestDoc(ValkeyDocument):
+        class TestDoc(Document):
             _COLLECTION = "lifecycle_test"
 
             @classmethod
@@ -285,12 +283,12 @@ class TestValkeyDocumentIntegration:
 
 
 class TestBlackCardIntegration:
-    """Integration tests for ValkeyBlackCard against a seeded database."""
+    """Integration tests for BlackCard against a seeded database."""
 
     async def test_create_and_load_by_id(self, seeded_client):
         """Load a black card by ID from the seeded collection."""
         from discord_against_humanity.domain.cards import (
-            ValkeyBlackCard,
+            BlackCard,
         )
 
         repo = ValkeyRepository(seeded_client, "black_cards")
@@ -298,7 +296,7 @@ class TestBlackCardIntegration:
         assert document is not None
         card_id = document["_id"]
 
-        card = await ValkeyBlackCard.create(seeded_client, card_id)
+        card = await BlackCard.create(seeded_client, card_id)
         assert card.document_id == card_id
         assert card.text is not None
         assert len(card.text) > 0
@@ -307,7 +305,7 @@ class TestBlackCardIntegration:
     async def test_pick_value_matches_seed(self, seeded_client):
         """Verify pick values are preserved from seed data."""
         from discord_against_humanity.domain.cards import (
-            ValkeyBlackCard,
+            BlackCard,
         )
 
         # Find the "pick 3" card by iterating through all cards
@@ -321,7 +319,7 @@ class TestBlackCardIntegration:
                 break
 
         assert pick3_id is not None
-        card = await ValkeyBlackCard.create(seeded_client, pick3_id)
+        card = await BlackCard.create(seeded_client, pick3_id)
         assert card.pick == 3
 
     async def test_text_with_underscore_formats_blanks(
@@ -329,7 +327,7 @@ class TestBlackCardIntegration:
     ):
         """Black card text with underscores renders as bold blanks."""
         from discord_against_humanity.domain.cards import (
-            ValkeyBlackCard,
+            BlackCard,
         )
 
         # Find a card with underscore in text
@@ -343,7 +341,7 @@ class TestBlackCardIntegration:
                 break
 
         assert underscore_id is not None
-        card = await ValkeyBlackCard.create(seeded_client, underscore_id)
+        card = await BlackCard.create(seeded_client, underscore_id)
         assert card.text is not None
         assert "_" not in card.text
         assert "{}" in card.text
@@ -356,12 +354,12 @@ class TestBlackCardIntegration:
 
 
 class TestWhiteCardIntegration:
-    """Integration tests for ValkeyWhiteCard against a seeded database."""
+    """Integration tests for WhiteCard against a seeded database."""
 
     async def test_create_and_load_by_id(self, seeded_client):
         """Load a white card by ID from the seeded collection."""
         from discord_against_humanity.domain.cards import (
-            ValkeyWhiteCard,
+            WhiteCard,
         )
 
         repo = ValkeyRepository(seeded_client, "white_cards")
@@ -369,7 +367,7 @@ class TestWhiteCardIntegration:
         assert document is not None
         card_id = document["_id"]
 
-        card = await ValkeyWhiteCard.create(seeded_client, card_id)
+        card = await WhiteCard.create(seeded_client, card_id)
         assert card.document_id == card_id
         assert card.text is not None
         assert len(card.text) > 0
@@ -385,7 +383,7 @@ class TestWhiteCardIntegration:
         from uuid import uuid4
 
         from discord_against_humanity.domain.cards import (
-            ValkeyWhiteCard,
+            WhiteCard,
         )
 
         # Insert a card with HTML content
@@ -396,7 +394,7 @@ class TestWhiteCardIntegration:
         )
         await seeded_client.sadd("white_cards:ids", doc_id)
 
-        card = await ValkeyWhiteCard.create(seeded_client, doc_id)
+        card = await WhiteCard.create(seeded_client, doc_id)
         assert card.text is not None
         assert "<b>" not in card.text
         assert "Bold answer" in card.text
@@ -416,10 +414,10 @@ class TestGameCardDrawIntegration:
         """draw_black_card retrieves a card from the seeded deck."""
         from unittest.mock import MagicMock
 
-        from discord_against_humanity.domain.game import ValkeyGame
+        from discord_against_humanity.domain.game import Game
 
         mock_bot = MagicMock()
-        game = ValkeyGame(seeded_client)
+        game = Game(seeded_client)
         game._bot = mock_bot
         game._set_default_values()
         await game.save()
@@ -430,10 +428,10 @@ class TestGameCardDrawIntegration:
         assert embed is not None
         # Verify the drawn card exists in the database
         from discord_against_humanity.domain.cards import (
-            ValkeyBlackCard,
+            BlackCard,
         )
 
-        card = await ValkeyBlackCard.create(
+        card = await BlackCard.create(
             seeded_client, game.black_cards_id[0]
         )
         assert card.text is not None
@@ -444,10 +442,10 @@ class TestGameCardDrawIntegration:
         """Drawing multiple black cards yields unique cards each time."""
         from unittest.mock import MagicMock
 
-        from discord_against_humanity.domain.game import ValkeyGame
+        from discord_against_humanity.domain.game import Game
 
         mock_bot = MagicMock()
-        game = ValkeyGame(seeded_client)
+        game = Game(seeded_client)
         game._bot = mock_bot
         game._set_default_values()
         await game.save()

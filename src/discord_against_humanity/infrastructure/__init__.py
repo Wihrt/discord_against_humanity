@@ -1,15 +1,15 @@
-"""Infrastructure layer for database access."""
+"""Infrastructure package — re-exports for backward compatibility."""
 
-from discord_against_humanity.infrastructure.valkey import (
+from discord_against_humanity.adapters.valkey import ValkeyRepository
+from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import (
     DocumentNotFoundError,
     Repository,
-    ValkeyDocument,
-    ValkeyRepository,
 )
 
 __all__ = [
     "DocumentNotFoundError",
+    "Document",
     "Repository",
-    "ValkeyDocument",
     "ValkeyRepository",
 ]
