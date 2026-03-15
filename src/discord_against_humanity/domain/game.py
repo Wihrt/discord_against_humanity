@@ -518,6 +518,9 @@ class MongoGame(MongoDocument):
             if player.document_id != self.tsar_id:
                 answers: list[str] = []
                 player_answers = await player.get_answers()
+                if len(player_answers) != black_card.pick:
+                    await player.delete_answers()
+                    continue
                 for answer in player_answers:
                     self._document["white_cards"].append(
                         answer.document_id
@@ -634,7 +637,7 @@ class MongoGame(MongoDocument):
                         if not self.playing:
                             return
 
-            if selected_indices:
+            if len(selected_indices) == required_picks:
                 card_indices = [idx + 1 for idx in selected_indices]
                 await player.add_answers(card_indices)
                 if self.board is not None and player.user is not None:

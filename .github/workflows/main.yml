@@ -36,6 +36,10 @@ jobs:
       - run: uv sync --frozen
       - name: Run tests (unit + integration with testcontainers)
         env:
+          # Ryuk is a testcontainers sidecar that cleans up containers
+          # after tests. In CI the runner is ephemeral, so Ryuk is
+          # unnecessary and may fail without a Docker socket. See:
+          # https://testcontainers.com/guides/testcontainers-container-lifecycle/#_ryuk
           TESTCONTAINERS_RYUK_DISABLED: "true"
         run: uv run pytest --tb=short -q
 
