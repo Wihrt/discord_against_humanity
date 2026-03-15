@@ -4,10 +4,10 @@ import logging
 from abc import abstractmethod
 from typing import Any, Self
 
-import valkey.asyncio as valkey
-
-from discord_against_humanity.adapters.valkey import ValkeyRepository
-from discord_against_humanity.ports.repository import Repository
+from discord_against_humanity.ports.repository import (
+    Repository,
+    RepositoryFactory,
+)
 from discord_against_humanity.utils.debug import async_log_event
 
 logger = logging.getLogger(__name__)
@@ -25,15 +25,16 @@ class Document:
 
     def __init__(
         self,
-        valkey_client: valkey.Valkey,
         *,
-        repository: Repository | None = None,
+        repository: Repository,
+        repo_factory: RepositoryFactory,
     ) -> None:
         """Create a new Document instance.
 
         Args:
-            valkey_client: Async Valkey client.
-            repository: Optional repository override (for testing).
+            repository: Repository for this document's collection.
+            repo_factory: Factory to create repositories for other
+                collections (used by subclasses to build related objects).
 
         Raises:
             ValueError: If _COLLECTION is not set.
@@ -42,10 +43,8 @@ class Document:
             raise ValueError(
                 f"{type(self).__name__} must define _COLLECTION"
             )
-        self._client = valkey_client
-        self._repo = repository or ValkeyRepository(
-            valkey_client, self._COLLECTION
-        )
+        self._repo = repository
+        self._repo_factory = repo_factory
         self._document: dict[str, Any] = {}
 
     @property

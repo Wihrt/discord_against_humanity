@@ -5,6 +5,8 @@ from uuid import uuid4
 
 import pytest
 
+from discord_against_humanity.ports.repository import Repository
+
 
 @pytest.fixture
 def mock_valkey_client():
@@ -23,6 +25,38 @@ def mock_valkey_client():
     client.srandmember = AsyncMock(return_value=None)
     client.scard = AsyncMock(return_value=0)
     return client
+
+
+def _make_mock_repo():
+    """Build a fresh mock Repository."""
+    repo = MagicMock(spec=Repository)
+    repo.find_by_id = AsyncMock(return_value=None)
+    repo.find_one = AsyncMock(return_value=None)
+    repo.insert = AsyncMock(return_value=str(uuid4()))
+    repo.replace = AsyncMock(return_value={})
+    repo.delete_by_id = AsyncMock()
+    repo.random_member = AsyncMock(return_value=None)
+    repo.count = AsyncMock(return_value=0)
+    return repo
+
+
+@pytest.fixture
+def mock_repo():
+    """Create a mock Repository."""
+    return _make_mock_repo()
+
+
+@pytest.fixture
+def mock_repo_factory():
+    """Create a mock RepositoryFactory.
+
+    Returns the same mock Repository for any collection name
+    so tests can inspect it easily.
+    """
+    repo = _make_mock_repo()
+    factory = MagicMock(side_effect=lambda _collection: repo)
+    factory._repo = repo  # expose for test assertions
+    return factory
 
 
 @pytest.fixture

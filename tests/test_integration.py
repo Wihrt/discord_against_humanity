@@ -9,7 +9,10 @@ import json
 
 import pytest
 
-from discord_against_humanity.adapters.valkey import ValkeyRepository
+from discord_against_humanity.adapters.valkey import (
+    ValkeyRepository,
+    create_repo_factory,
+)
 from discord_against_humanity.ports.repository import DocumentNotFoundError
 
 # ---------------------------------------------------------------------------
@@ -244,6 +247,8 @@ class TestDocumentIntegration:
         """Full lifecycle: save, get, and delete a document."""
         from discord_against_humanity.domain.document import Document
 
+        factory = create_repo_factory(valkey_client)
+
         class TestDoc(Document):
             _COLLECTION = "lifecycle_test"
 
@@ -251,7 +256,10 @@ class TestDocumentIntegration:
             async def create(cls):
                 raise NotImplementedError
 
-        doc = TestDoc(valkey_client)
+        doc = TestDoc(
+            repository=factory("lifecycle_test"),
+            repo_factory=factory,
+        )
         doc._document = {"field": "value"}
 
         # Save (insert)
@@ -291,12 +299,13 @@ class TestBlackCardIntegration:
             BlackCard,
         )
 
+        factory = create_repo_factory(seeded_client)
         repo = ValkeyRepository(seeded_client, "black_cards")
         document = await repo.random_member()
         assert document is not None
         card_id = document["_id"]
 
-        card = await BlackCard.create(seeded_client, card_id)
+        card = await BlackCard.create(factory, card_id)
         assert card.document_id == card_id
         assert card.text is not None
         assert len(card.text) > 0
@@ -307,6 +316,8 @@ class TestBlackCardIntegration:
         from discord_against_humanity.domain.cards import (
             BlackCard,
         )
+
+        factory = create_repo_factory(seeded_client)
 
         # Find the "pick 3" card by iterating through all cards
         all_ids = await seeded_client.smembers("black_cards:ids")
@@ -319,7 +330,7 @@ class TestBlackCardIntegration:
                 break
 
         assert pick3_id is not None
-        card = await BlackCard.create(seeded_client, pick3_id)
+        card = await BlackCard.create(factory, pick3_id)
         assert card.pick == 3
 
     async def test_text_with_underscore_formats_blanks(
@@ -329,6 +340,8 @@ class TestBlackCardIntegration:
         from discord_against_humanity.domain.cards import (
             BlackCard,
         )
+
+        factory = create_repo_factory(seeded_client)
 
         # Find a card with underscore in text
         all_ids = await seeded_client.smembers("black_cards:ids")
@@ -341,7 +354,7 @@ class TestBlackCardIntegration:
                 break
 
         assert underscore_id is not None
-        card = await BlackCard.create(seeded_client, underscore_id)
+        card = await BlackCard.create(factory, underscore_id)
         assert card.text is not None
         assert "_" not in card.text
         assert "{}" in card.text
@@ -362,12 +375,13 @@ class TestWhiteCardIntegration:
             WhiteCard,
         )
 
+        factory = create_repo_factory(seeded_client)
         repo = ValkeyRepository(seeded_client, "white_cards")
         document = await repo.random_member()
         assert document is not None
         card_id = document["_id"]
 
-        card = await WhiteCard.create(seeded_client, card_id)
+        card = await WhiteCard.create(factory, card_id)
         assert card.document_id == card_id
         assert card.text is not None
         assert len(card.text) > 0
@@ -386,6 +400,8 @@ class TestWhiteCardIntegration:
             WhiteCard,
         )
 
+        factory = create_repo_factory(seeded_client)
+
         # Insert a card with HTML content
         doc_id = str(uuid4())
         await seeded_client.set(
@@ -394,7 +410,7 @@ class TestWhiteCardIntegration:
         )
         await seeded_client.sadd("white_cards:ids", doc_id)
 
-        card = await WhiteCard.create(seeded_client, doc_id)
+        card = await WhiteCard.create(factory, doc_id)
         assert card.text is not None
         assert "<b>" not in card.text
         assert "Bold answer" in card.text
@@ -416,8 +432,12 @@ class TestGameCardDrawIntegration:
 
         from discord_against_humanity.domain.game import Game
 
+        factory = create_repo_factory(seeded_client)
         mock_bot = MagicMock()
-        game = Game(seeded_client)
+        game = Game(
+            repository=factory("games"),
+            repo_factory=factory,
+        )
         game._bot = mock_bot
         game._set_default_values()
         await game.save()
@@ -432,7 +452,7 @@ class TestGameCardDrawIntegration:
         )
 
         card = await BlackCard.create(
-            seeded_client, game.black_cards_id[0]
+            factory, game.black_cards_id[0]
         )
         assert card.text is not None
 
@@ -444,8 +464,12 @@ class TestGameCardDrawIntegration:
 
         from discord_against_humanity.domain.game import Game
 
+        factory = create_repo_factory(seeded_client)
         mock_bot = MagicMock()
-        game = Game(seeded_client)
+        game = Game(
+            repository=factory("games"),
+            repo_factory=factory,
+        )
         game._bot = mock_bot
         game._set_default_values()
         await game.save()

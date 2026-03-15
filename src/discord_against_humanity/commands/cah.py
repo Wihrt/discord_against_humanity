@@ -38,7 +38,7 @@ class CardsAgainstHumanity(commands.Cog):
             bot: The Discord bot instance.
         """
         self.bot = bot
-        self.valkey_client = self.bot.valkey  # type: ignore[attr-defined]
+        self.repo_factory = self.bot.repo_factory  # type: ignore[attr-defined]
 
     # Slash Commands
     # -------------------------------------------------------------------------
@@ -70,7 +70,7 @@ class CardsAgainstHumanity(commands.Cog):
         assert interaction.guild is not None
         permissions = self._default_permission(interaction.guild)
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         game.guild = interaction.guild
         game.category = await interaction.guild.create_category(
@@ -99,7 +99,7 @@ class CardsAgainstHumanity(commands.Cog):
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         players = await game.get_players()
         for player in players:
@@ -132,11 +132,11 @@ class CardsAgainstHumanity(commands.Cog):
             read_messages=True, send_messages=True
         )
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         player = await Player.create(
             self.bot,
-            self.bot.valkey,  # type: ignore[attr-defined]
+            self.repo_factory,
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -174,11 +174,11 @@ class CardsAgainstHumanity(commands.Cog):
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         player = await Player.create(
             self.bot,
-            self.bot.valkey,  # type: ignore[attr-defined]
+            self.repo_factory,
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -219,7 +219,7 @@ class CardsAgainstHumanity(commands.Cog):
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         game.playing = True
         game.points = points
@@ -268,7 +268,7 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         game.playing = False
         await game.save()
@@ -298,11 +298,11 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         player = await Player.create(
             self.bot,
-            self.bot.valkey,  # type: ignore[attr-defined]
+            self.repo_factory,
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -352,11 +352,11 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         player = await Player.create(
             self.bot,
-            self.bot.valkey,  # type: ignore[attr-defined]
+            self.repo_factory,
             user=interaction.user,
             guild=interaction.guild,
         )
@@ -388,7 +388,7 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         await game.score()
         await interaction.response.send_message(
@@ -452,7 +452,7 @@ class CardsAgainstHumanity(commands.Cog):
         """
         assert interaction.guild is not None
         game = await Game.create(
-            self.bot, self.bot.valkey, interaction.guild  # type: ignore[attr-defined]
+            self.bot, self.repo_factory, interaction.guild
         )
         players = await game.get_players()
         for player in players:

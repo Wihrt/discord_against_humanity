@@ -24,9 +24,9 @@ def mock_repo():
 
 
 @pytest.fixture
-def game(mock_valkey_client, mock_bot, mock_repo):
+def game(mock_bot, mock_repo, mock_repo_factory):
     """Create a Game with default values set."""
-    g = Game(mock_valkey_client, repository=mock_repo)
+    g = Game(repository=mock_repo, repo_factory=mock_repo_factory)
     g._bot = mock_bot
     g._set_default_values()
     return g
@@ -136,8 +136,10 @@ class TestGameProperties:
     def test_players_id_default(self, game):
         assert game.players_id == []
 
-    def test_players_id_none_when_key_missing(self, mock_valkey_client, mock_bot):
-        g = Game(mock_valkey_client)
+    def test_players_id_none_when_key_missing(
+        self, mock_bot, mock_repo, mock_repo_factory
+    ):
+        g = Game(repository=mock_repo, repo_factory=mock_repo_factory)
         g._bot = mock_bot
         assert g.players_id is None
 
@@ -154,11 +156,10 @@ class TestGameProperties:
 class TestGameCreate:
     """Tests for Game.create()."""
 
-    async def test_create_sets_defaults(self, mock_bot, mock_valkey_client, mock_guild):
-        mock_repo = MagicMock(spec=Repository)
-        mock_repo.find_one = AsyncMock(return_value=None)
-
-        game = Game(mock_valkey_client, repository=mock_repo)
+    async def test_create_sets_defaults(
+        self, mock_bot, mock_repo, mock_repo_factory, mock_guild
+    ):
+        game = Game(repository=mock_repo, repo_factory=mock_repo_factory)
         game._bot = mock_bot
         game._set_default_values()
         assert game.points == 5
@@ -166,7 +167,7 @@ class TestGameCreate:
         assert game.voting == "nobody"
 
     async def test_create_loads_existing_game(
-        self, mock_bot, mock_valkey_client, mock_guild
+        self, mock_bot, mock_repo, mock_repo_factory, mock_guild
     ):
         existing_doc = {
             "_id": str(uuid4()),
@@ -182,10 +183,9 @@ class TestGameCreate:
             "results": [],
             "tsar": 0,
         }
-        mock_repo = MagicMock(spec=Repository)
         mock_repo.find_one = AsyncMock(return_value=existing_doc)
 
-        game = Game(mock_valkey_client, repository=mock_repo)
+        game = Game(repository=mock_repo, repo_factory=mock_repo_factory)
         game._bot = mock_bot
         game._set_default_values()
         await game._get(mock_guild.id)
@@ -206,11 +206,11 @@ class TestGameMethods:
             await game.delete_player("not a player")
 
     async def test_add_player(
-        self, game, mock_bot, mock_valkey_client, mock_repo
+        self, game, mock_bot, mock_repo, mock_repo_factory
     ):
         from discord_against_humanity.domain.player import Player
 
-        player = Player(mock_valkey_client, repository=mock_repo)
+        player = Player(repository=mock_repo, repo_factory=mock_repo_factory)
         player._bot = mock_bot
         player._set_default_values()
         player._document["_id"] = str(uuid4())
@@ -225,13 +225,13 @@ class TestGameMethods:
         assert player.document_id in game._document["players"]
 
     async def test_delete_player(
-        self, game, mock_bot, mock_valkey_client, mock_repo
+        self, game, mock_bot, mock_repo, mock_repo_factory
     ):
         from discord_against_humanity.domain.player import Player
 
         game._document["_id"] = str(uuid4())
 
-        player = Player(mock_valkey_client, repository=mock_repo)
+        player = Player(repository=mock_repo, repo_factory=mock_repo_factory)
         player._bot = mock_bot
         player._set_default_values()
         pid = str(uuid4())
@@ -247,7 +247,7 @@ class TestGameMethods:
         assert pid not in game._document["players"]
 
     async def test_get_players_answers_counts_non_tsar(
-        self, game, mock_bot, mock_valkey_client
+        self, game, mock_bot, mock_repo_factory
     ):
         tsar_id = str(uuid4())
         player1_id = str(uuid4())
@@ -256,10 +256,12 @@ class TestGameMethods:
         game._document["tsar"] = tsar_id
 
         # Patch Player.create to return mock players
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -275,15 +277,17 @@ class TestGameMethods:
             count = await game.get_players_answers()
             assert count == 1
 
-    async def test_get_players_score(self, game, mock_bot, mock_valkey_client):
+    async def test_get_players_score(self, game, mock_bot, mock_repo_factory):
         p1_id = str(uuid4())
         p2_id = str(uuid4())
         game._document["players"] = [p1_id, p2_id]
 
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -303,15 +307,17 @@ class TestGameMethods:
             assert 3 in score_values
             assert 1 in score_values
 
-    async def test_is_points_max_false(self, game, mock_bot, mock_valkey_client):
+    async def test_is_points_max_false(self, game, mock_bot, mock_repo_factory):
         p1_id = str(uuid4())
         game._document["players"] = [p1_id]
         game._document["points"] = 5
 
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -325,15 +331,17 @@ class TestGameMethods:
             result = await game.is_points_max()
             assert result is False
 
-    async def test_is_points_max_true(self, game, mock_bot, mock_valkey_client):
+    async def test_is_points_max_true(self, game, mock_bot, mock_repo_factory):
         p1_id = str(uuid4())
         game._document["players"] = [p1_id]
         game._document["points"] = 5
 
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -365,14 +373,16 @@ class TestGameMethods:
         await game.set_random_tsar()
         assert game._document["tsar"] == 0
 
-    async def test_get_tsar_answer_true(self, game, mock_bot, mock_valkey_client):
+    async def test_get_tsar_answer_true(self, game, mock_bot, mock_repo_factory):
         tsar_id = str(uuid4())
         game._document["tsar"] = tsar_id
 
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id
@@ -386,14 +396,16 @@ class TestGameMethods:
             result = await game.get_tsar_answer()
             assert result is True
 
-    async def test_get_tsar_answer_false(self, game, mock_bot, mock_valkey_client):
+    async def test_get_tsar_answer_false(self, game, mock_bot, mock_repo_factory):
         tsar_id = str(uuid4())
         game._document["tsar"] = tsar_id
 
-        async def fake_create(bot, client, doc_id):
+        async def fake_create(bot, factory, doc_id):
             from discord_against_humanity.domain.player import Player
 
-            p = Player(client)
+            repo = MagicMock(spec=Repository)
+            repo.find_by_id = AsyncMock(return_value=None)
+            p = Player(repository=repo, repo_factory=factory)
             p._bot = bot
             p._set_default_values()
             p._document["_id"] = doc_id

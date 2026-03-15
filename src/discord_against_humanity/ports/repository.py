@@ -1,7 +1,7 @@
 """Abstract repository port — defines the persistence contract."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 
 class DocumentNotFoundError(Exception):
@@ -92,3 +92,11 @@ class Repository(ABC):
         Returns:
             The total number of documents.
         """
+
+
+RepositoryFactory = Callable[[str], Repository]
+"""A callable that creates a :class:`Repository` for a given collection name.
+
+This is a port: domain objects call the factory to obtain repositories
+without knowing which adapter backs them.
+"""

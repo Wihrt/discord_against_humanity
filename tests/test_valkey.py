@@ -38,9 +38,15 @@ def mock_repo():
 
 
 @pytest.fixture
-def doc(mock_valkey_client, mock_repo):
+def mock_factory(mock_repo):
+    """Create a mock RepositoryFactory."""
+    return MagicMock(side_effect=lambda _: mock_repo)
+
+
+@pytest.fixture
+def doc(mock_repo, mock_factory):
     """Create a ConcreteDocument with a mock repo."""
-    return ConcreteDocument(mock_valkey_client, repository=mock_repo)
+    return ConcreteDocument(repository=mock_repo, repo_factory=mock_factory)
 
 
 class TestDocumentId:
@@ -76,13 +82,13 @@ class TestInit:
     def test_collection(self):
         assert ConcreteDocument._COLLECTION == "test_collection"
 
-    def test_client_stored(self, doc, mock_valkey_client):
-        assert doc._client is mock_valkey_client
+    def test_repo_stored(self, doc, mock_repo):
+        assert doc._repo is mock_repo
 
     def test_empty_document(self, doc):
         assert doc._document == {}
 
-    def test_raises_if_collection_not_set(self, mock_valkey_client):
+    def test_raises_if_collection_not_set(self, mock_repo, mock_factory):
         class BadDoc(Document):
             _COLLECTION = ""
 
@@ -91,11 +97,11 @@ class TestInit:
                 raise NotImplementedError
 
         with pytest.raises(ValueError, match="must define"):
-            BadDoc(mock_valkey_client)
+            BadDoc(repository=mock_repo, repo_factory=mock_factory)
 
-    def test_custom_repository_used(self, mock_valkey_client, mock_repo):
+    def test_custom_repository_used(self, mock_repo, mock_factory):
         doc = ConcreteDocument(
-            mock_valkey_client, repository=mock_repo
+            repository=mock_repo, repo_factory=mock_factory
         )
         assert doc._repo is mock_repo
 

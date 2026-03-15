@@ -4,12 +4,12 @@ import logging
 from typing import Any, Self
 
 import discord
-import valkey.asyncio as valkey
 from discord import Guild, Member, TextChannel
 from discord.ext.commands import Bot
 
 from discord_against_humanity.domain.cards import WhiteCard
 from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import RepositoryFactory
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -193,7 +193,7 @@ class Player(Document):
     async def create(
         cls,
         discord_bot: Bot,
-        valkey_client: valkey.Valkey,
+        repo_factory: RepositoryFactory,
         document_id: str | None = None,
         user: Member | discord.User | None = None,
         guild: Guild | None = None,
@@ -202,7 +202,7 @@ class Player(Document):
 
         Args:
             discord_bot: The Discord bot instance.
-            valkey_client: Async Valkey client.
+            repo_factory: Factory to create repositories.
             document_id: Optional ID to load an existing player.
             user: Optional Discord Member/User to look up an existing player.
             guild: Optional Discord Guild to resolve member from user.
@@ -210,7 +210,10 @@ class Player(Document):
         Returns:
             A new Player instance.
         """
-        self = Player(valkey_client)
+        self = Player(
+            repository=repo_factory("players"),
+            repo_factory=repo_factory,
+        )
         self._bot = discord_bot
         self._set_default_values()
         if document_id:
@@ -267,7 +270,7 @@ class Player(Document):
         """
         cards: list[WhiteCard] = []
         for card_id in self.white_cards_id:  # type: ignore[union-attr]
-            card = await WhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._repo_factory, card_id)
             cards.append(card)
         return cards
 
@@ -283,15 +286,9 @@ class Player(Document):
         Args:
             used_cards: List of IDs for already-used cards.
         """
-        from discord_against_humanity.adapters.valkey import (
-            ValkeyRepository,
-        )
-
         max_attempts = 200
         attempts = 0
-        wc_repo = ValkeyRepository(
-            self._client, "white_cards"
-        )
+        wc_repo = self._repo_factory("white_cards")
         while len(self.white_cards_id) != _WHITE_CARDS_NUMBER:  # type: ignore[arg-type]
             attempts += 1
             if attempts > max_attempts:
@@ -333,7 +330,7 @@ class Player(Document):
         """
         cards: list[WhiteCard] = []
         for card_id in self.answers_id:  # type: ignore[union-attr]
-            card = await WhiteCard.create(self._client, card_id)
+            card = await WhiteCard.create(self._repo_factory, card_id)
             cards.append(card)
         return cards
 

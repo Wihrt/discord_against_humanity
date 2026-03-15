@@ -38,7 +38,7 @@ async def game_exists(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     return game.document_id is not None
 
@@ -55,7 +55,7 @@ async def no_game_exists(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     return game.document_id is None
 
@@ -72,11 +72,11 @@ async def is_player(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     player = await Player.create(
         interaction.client,
-        interaction.client.valkey,  # type: ignore[attr-defined]
+        interaction.client.repo_factory,  # type: ignore[attr-defined]
         user=interaction.user,
         guild=interaction.guild,
     )
@@ -97,11 +97,11 @@ async def is_not_player(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     player = await Player.create(
         interaction.client,
-        interaction.client.valkey,  # type: ignore[attr-defined]
+        interaction.client.repo_factory,  # type: ignore[attr-defined]
         user=interaction.user,
         guild=interaction.guild,
     )
@@ -122,7 +122,7 @@ async def game_playing(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     logger.debug("Result of game_playing: %s", game.playing)
     return game.playing  # type: ignore[return-value]
@@ -140,7 +140,7 @@ async def game_not_playing(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     logger.debug("Result of game_not_playing: %s", not game.playing)
     return not game.playing
@@ -158,7 +158,7 @@ async def is_enough_players(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     result = len(game.players_id) >= 2  # type: ignore[arg-type]
     logger.debug("Result of is_enough_players: %s", result)
@@ -178,7 +178,7 @@ async def from_user_channel(interaction: discord.Interaction) -> bool:
     assert interaction.guild is not None
     player = await Player.create(
         interaction.client,
-        interaction.client.valkey,  # type: ignore[attr-defined]
+        interaction.client.repo_factory,  # type: ignore[attr-defined]
         user=interaction.user,
         guild=interaction.guild,
     )
@@ -199,7 +199,7 @@ async def is_players_voting(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     result = game.voting == "players"
     logger.debug("Result of is_players_voting: %s", result)
@@ -218,7 +218,7 @@ async def is_tsar_voting(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     result = game.voting == "tsar"
     logger.debug("Result of is_tsar_voting: %s", result)
@@ -237,11 +237,11 @@ async def is_tsar(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     player = await Player.create(
         interaction.client,
-        interaction.client.valkey,  # type: ignore[attr-defined]
+        interaction.client.repo_factory,  # type: ignore[attr-defined]
         user=interaction.user,
         guild=interaction.guild,
     )
@@ -262,11 +262,11 @@ async def is_not_tsar(interaction: discord.Interaction) -> bool:
     """
     assert interaction.guild is not None
     game = await Game.create(
-        interaction.client, interaction.client.valkey, interaction.guild  # type: ignore[attr-defined]
+        interaction.client, interaction.client.repo_factory, interaction.guild  # type: ignore[attr-defined]
     )
     player = await Player.create(
         interaction.client,
-        interaction.client.valkey,  # type: ignore[attr-defined]
+        interaction.client.repo_factory,  # type: ignore[attr-defined]
         user=interaction.user,
         guild=interaction.guild,
     )

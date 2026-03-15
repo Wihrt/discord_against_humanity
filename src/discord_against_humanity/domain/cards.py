@@ -3,10 +3,10 @@
 import logging
 from typing import Self
 
-import valkey.asyncio as valkey
 from html2text import html2text
 
 from discord_against_humanity.domain.document import Document
+from discord_against_humanity.ports.repository import RepositoryFactory
 
 logger = logging.getLogger(__name__)
 
@@ -47,19 +47,22 @@ class BlackCard(Document):
     @classmethod
     async def create(
         cls,
-        valkey_client: valkey.Valkey,
+        repo_factory: RepositoryFactory,
         document_id: str | None = None,
     ) -> Self:
         """Create a new BlackCard instance.
 
         Args:
-            valkey_client: Async Valkey client.
+            repo_factory: Factory to create repositories.
             document_id: Optional ID of the document to load.
 
         Returns:
             A new BlackCard instance.
         """
-        self = BlackCard(valkey_client)
+        self = BlackCard(
+            repository=repo_factory("black_cards"),
+            repo_factory=repo_factory,
+        )
         if document_id:
             await self.get(document_id)
         return self
@@ -85,19 +88,22 @@ class WhiteCard(Document):
     @classmethod
     async def create(
         cls,
-        valkey_client: valkey.Valkey,
+        repo_factory: RepositoryFactory,
         document_id: str | None = None,
     ) -> Self:
         """Create a new WhiteCard instance.
 
         Args:
-            valkey_client: Async Valkey client.
+            repo_factory: Factory to create repositories.
             document_id: Optional ID of the document to load.
 
         Returns:
             A new WhiteCard instance.
         """
-        self = WhiteCard(valkey_client)
+        self = WhiteCard(
+            repository=repo_factory("white_cards"),
+            repo_factory=repo_factory,
+        )
         if document_id:
             await self.get(document_id)
         return self

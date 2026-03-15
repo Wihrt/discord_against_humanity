@@ -5,13 +5,13 @@ from asyncio import sleep
 from random import sample, shuffle
 from typing import Any, Self
 
-import valkey.asyncio as valkey
 from discord import CategoryChannel, Guild, TextChannel
 from discord.ext.commands import Bot
 
 from discord_against_humanity.domain.cards import BlackCard
 from discord_against_humanity.domain.document import Document
 from discord_against_humanity.domain.player import Player
+from discord_against_humanity.ports.repository import RepositoryFactory
 from discord_against_humanity.utils.debug import async_log_event
 from discord_against_humanity.utils.embed import create_embed
 
@@ -249,20 +249,23 @@ class Game(Document):
     async def create(
         cls,
         discord_bot: Bot,
-        valkey_client: valkey.Valkey,
+        repo_factory: RepositoryFactory,
         guild: Guild,
     ) -> Self:
         """Create a new Game instance.
 
         Args:
             discord_bot: The Discord bot instance.
-            valkey_client: Async Valkey client.
+            repo_factory: Factory to create repositories.
             guild: The Discord guild for this game.
 
         Returns:
             A new Game instance.
         """
-        self = Game(valkey_client)
+        self = Game(
+            repository=repo_factory("games"),
+            repo_factory=repo_factory,
+        )
         self._bot = discord_bot
         self._set_default_values()
         await self._get(guild.id)
@@ -296,7 +299,7 @@ class Game(Document):
         self._document["tsar"] = 0
 
     async def _reload(self) -> None:
-        """Reload the game state from Valkey."""
+        """Reload the game state from the repository."""
         if self.document_id:
             await self.get(self.document_id)
 
@@ -313,7 +316,7 @@ class Game(Document):
         players: list[Player] = []
         for player_id in self.players_id:  # type: ignore[union-attr]
             player = await Player.create(
-                self._bot, self._client, player_id
+                self._bot, self._repo_factory, player_id
             )
             players.append(player)
         return players
@@ -411,7 +414,7 @@ class Game(Document):
         """
         black_card_id = self.black_cards_id[-1]  # type: ignore[index]
         black_card = await BlackCard.create(
-            self._client, black_card_id
+            self._repo_factory, black_card_id
         )
         return black_card
 
@@ -425,15 +428,9 @@ class Game(Document):
         Raises:
             RuntimeError: If no new card can be drawn after max attempts.
         """
-        from discord_against_humanity.adapters.valkey import (
-            ValkeyRepository,
-        )
-
         attempts = 0
         card_number = len(self.black_cards_id)  # type: ignore[arg-type]
-        bc_repo = ValkeyRepository(
-            self._client, "black_cards"
-        )
+        bc_repo = self._repo_factory("black_cards")
         while len(self.black_cards_id) == card_number:  # type: ignore[arg-type]
             attempts += 1
             if attempts > _MAX_DRAW_ATTEMPTS:
@@ -466,7 +463,7 @@ class Game(Document):
             The tsar Player instance.
         """
         player = await Player.create(
-            self._bot, self._client, self.tsar_id
+            self._bot, self._repo_factory, self.tsar_id
         )
         return player
 
@@ -592,7 +589,7 @@ class Game(Document):
 
         player_id = self._document["results"][tsar_choice - 1][0]
         player = await Player.create(
-            self._bot, self._client, player_id
+            self._bot, self._repo_factory, player_id
         )
         player.score += 1
         await player.save()

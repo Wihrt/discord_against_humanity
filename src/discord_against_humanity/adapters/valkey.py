@@ -10,9 +10,17 @@ import valkey.asyncio as valkey
 from discord_against_humanity.ports.repository import (
     DocumentNotFoundError,
     Repository,
+    RepositoryFactory,
 )
 
 logger = logging.getLogger(__name__)
+
+# Secondary-index configuration per collection.
+# Only fields listed here support ``find_one`` look-ups.
+_INDEX_FIELDS: dict[str, list[str]] = {
+    "games": ["guild"],
+    "players": ["user"],
+}
 
 
 class ValkeyRepository(Repository):
@@ -143,3 +151,25 @@ class ValkeyRepository(Repository):
         """Count the number of documents in the collection."""
         result = await self._client.scard(self._ids_key())  # type: ignore[misc]
         return int(result)
+
+
+def create_repo_factory(client: valkey.Valkey) -> RepositoryFactory:
+    """Build a :class:`RepositoryFactory` backed by a Valkey client.
+
+    The returned callable creates :class:`ValkeyRepository` instances for
+    any collection name, automatically wiring secondary-index fields
+    from the module-level ``_INDEX_FIELDS`` mapping.
+
+    Args:
+        client: An async Valkey client.
+
+    Returns:
+        A factory callable ``(collection: str) -> Repository``.
+    """
+
+    def factory(collection: str) -> Repository:
+        return ValkeyRepository(
+            client, collection, _INDEX_FIELDS.get(collection)
+        )
+
+    return factory

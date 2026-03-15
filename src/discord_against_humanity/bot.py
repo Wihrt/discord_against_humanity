@@ -13,6 +13,7 @@ import valkey.asyncio as valkey
 from discord import Color, app_commands
 from discord.ext.commands import Bot
 
+from discord_against_humanity.adapters.valkey import create_repo_factory
 from discord_against_humanity.utils.embed import create_embed
 
 logger = logging.getLogger("discord_against_humanity.bot")
@@ -45,6 +46,7 @@ def create_bot() -> Bot:
         port=int(environ.get("VALKEY_PORT", "6379")),
         decode_responses=True,
     )
+    bot.repo_factory = create_repo_factory(bot.valkey)  # type: ignore[attr-defined]
 
     @bot.event
     async def on_ready() -> None:
