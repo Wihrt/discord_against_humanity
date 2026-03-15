@@ -7,7 +7,7 @@ import discord
 from discord import PermissionOverwrite, app_commands
 from discord.ext import commands
 
-from discord_against_humanity.checks.game_checks import (
+from discord_against_humanity.adapters.checks.game_checks import (
     from_user_channel,
     game_exists,
     game_not_playing,

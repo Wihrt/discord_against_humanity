@@ -9,11 +9,11 @@ import json
 
 import pytest
 
-from discord_against_humanity.adapters.valkey import (
+from discord_against_humanity.ports.repository import DocumentNotFoundError
+from discord_against_humanity.ports.valkey import (
     ValkeyRepository,
     create_repo_factory,
 )
-from discord_against_humanity.ports.repository import DocumentNotFoundError
 
 # ---------------------------------------------------------------------------
 # Testcontainers fixture

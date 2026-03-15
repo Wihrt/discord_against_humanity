@@ -13,12 +13,12 @@ import valkey.asyncio as valkey
 from discord import Color, app_commands
 from discord.ext.commands import Bot
 
-from discord_against_humanity.adapters.valkey import create_repo_factory
+from discord_against_humanity.ports.valkey import create_repo_factory
 from discord_against_humanity.utils.embed import create_embed
 
 logger = logging.getLogger("discord_against_humanity.bot")
 
-EXTENSIONS = ["discord_against_humanity.commands.cah"]
+EXTENSIONS = ["discord_against_humanity.adapters.commands.cah"]
 
 
 def init_logger() -> None:
