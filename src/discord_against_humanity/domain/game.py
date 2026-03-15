@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_DRAW_ATTEMPTS = 200
 _POLL_INTERVAL = 5
-_WHITE_CARDS_NUMBER = 7
 
 
 class MongoGame(MongoDocument):
@@ -598,7 +597,10 @@ class MongoGame(MongoDocument):
                 return
 
             selected_indices: list[int] = []
-            valid_emojis = get_number_emojis(_WHITE_CARDS_NUMBER)
+            hand_size = len(player.white_cards_id or [])
+            if hand_size == 0:
+                return
+            valid_emojis = get_number_emojis(hand_size)
 
             for _ in range(required_picks):
                 found_reaction = False
