@@ -109,6 +109,7 @@ modules = [
     "discord_against_humanity.adapters.valkey",
     "discord_against_humanity.adapters.memory",
     "discord_against_humanity.adapters.cah_json",
+    "discord_against_humanity.adapters.scheduler",
 ]
 
 # ---------------------------------------------------------------------------

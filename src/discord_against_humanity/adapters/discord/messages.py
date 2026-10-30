@@ -1,6 +1,7 @@
 """Rendering of game state into Discord embeds and texts."""
 
 from collections.abc import Sequence
+from datetime import datetime
 
 import discord
 
@@ -18,6 +19,13 @@ def mention(user_id: int) -> str:
 
 def channel_mention(channel_id: int) -> str:
     return f"<#{channel_id}>"
+
+
+def closes_in(deadline: datetime | None, label: str) -> str:
+    """A live Discord countdown, e.g. " Answers close in 2 minutes."."""
+    if deadline is None:
+        return ""
+    return f" {label} <t:{int(deadline.timestamp())}:R>."
 
 
 def question_text(card: BlackCard) -> str:

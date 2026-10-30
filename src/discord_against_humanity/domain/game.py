@@ -7,6 +7,7 @@ plain integers handed over by the adapters.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import StrEnum
 from random import Random
 
@@ -17,6 +18,7 @@ from discord_against_humanity.domain.errors import (
     GameNotStartedError,
     InvalidChoiceError,
     InvalidPointsError,
+    InvalidTimerError,
     NotAPlayerError,
     NotEnoughPlayersError,
     WrongPhaseError,
@@ -27,6 +29,10 @@ MIN_PLAYERS = 3
 MIN_POINTS = 1
 MAX_POINTS = 50
 DEFAULT_POINTS = 5
+# Seconds allowed to answer, then to judge. 0 disables the timer.
+DEFAULT_TURN_SECONDS = 120
+MIN_TURN_SECONDS = 15
+MAX_TURN_SECONDS = 600
 
 
 class Phase(StrEnum):
@@ -52,6 +58,8 @@ class Round:
     answers: dict[int, list[WhiteCard]] = field(default_factory=dict)
     # Shuffled answer owners, filled once every participant has answered.
     proposals: list[int] = field(default_factory=list)
+    # When the current phase (answering, then judging) times out.
+    deadline: datetime | None = None
 
     @property
     def judging(self) -> bool:
@@ -74,6 +82,17 @@ class Departure:
     game_stopped: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class Timeout:
+    """What happened when a phase ran out of time."""
+
+    phase: Phase
+    # Players who did not answer in time, or the Card Czar who did not judge.
+    late: tuple[int, ...]
+    judging_started: bool = False
+    round_cancelled: bool = False
+
+
 @dataclass(slots=True)
 class Game:
     guild_id: int
@@ -86,6 +105,7 @@ class Game:
     next_czar_id: int | None = None
     # House rule from the original bot: the round winner judges next.
     winner_becomes_czar: bool = False
+    turn_seconds: int = DEFAULT_TURN_SECONDS
     used_black_cards: set[str] = field(default_factory=set)
     discarded_white_cards: set[str] = field(default_factory=set)
 
@@ -150,7 +170,7 @@ class Game:
         self.players[user_id] = player
         return player
 
-    def remove_player(self, user_id: int, rng: Random) -> Departure:
+    def remove_player(self, user_id: int, rng: Random, now: datetime | None = None) -> Departure:
         player = self.player(user_id)
         order = list(self.players)
         del self.players[user_id]
@@ -174,18 +194,27 @@ class Game:
         if user_id == round_.czar_id or not round_.participants:
             self._cancel_round()
             return Departure(player, round_cancelled=True)
-        return Departure(player, judging_started=self._maybe_start_judging(rng))
+        return Departure(player, judging_started=self._maybe_start_judging(rng, now))
 
-    def start(self, points: int, *, winner_becomes_czar: bool = False) -> None:
+    def start(
+        self,
+        points: int,
+        *,
+        winner_becomes_czar: bool = False,
+        turn_seconds: int = DEFAULT_TURN_SECONDS,
+    ) -> None:
         if self.started:
             raise GameAlreadyStartedError
         if not MIN_POINTS <= points <= MAX_POINTS:
             raise InvalidPointsError(MIN_POINTS, MAX_POINTS)
+        if turn_seconds and not MIN_TURN_SECONDS <= turn_seconds <= MAX_TURN_SECONDS:
+            raise InvalidTimerError(MIN_TURN_SECONDS, MAX_TURN_SECONDS)
         if len(self.players) < MIN_PLAYERS:
             raise NotEnoughPlayersError(MIN_PLAYERS)
         self.started = True
         self.points_to_win = points
         self.winner_becomes_czar = winner_becomes_czar
+        self.turn_seconds = turn_seconds
         for player in self.players.values():
             player.score = 0
 
@@ -201,7 +230,8 @@ class Game:
     def deal(self, user_id: int, cards: Sequence[WhiteCard]) -> None:
         self.player(user_id).hand.extend(cards)
 
-    def begin_round(self, black_card: BlackCard, rng: Random) -> Round:
+    def begin_round(self, black_card: BlackCard, rng: Random, now: datetime | None = None) -> Round:
+        """Open a round. Without *now*, the round has no deadline."""
         if not self.started:
             raise GameNotStartedError
         if self.round is not None:
@@ -217,16 +247,20 @@ class Game:
             black_card=black_card,
             czar_id=czar_id,
             participants=[uid for uid in self.players if uid != czar_id],
+            deadline=self._deadline(now),
         )
         return self.round
 
-    def submit_answers(self, user_id: int, choices: Sequence[int], rng: Random) -> bool:
+    def submit_answers(
+        self, user_id: int, choices: Sequence[int], rng: Random, now: datetime | None = None
+    ) -> bool:
         """Play cards from the player's hand.
 
         Args:
             user_id: The answering player.
             choices: 1-based positions of the cards in the player's hand.
             rng: Random source used to shuffle the proposals.
+            now: Current time, to set the judging deadline.
 
         Returns:
             True when this was the last awaited answer and judging begins.
@@ -251,7 +285,7 @@ class Game:
         round_.answers[user_id] = [player.hand[choice - 1] for choice in choices]
         for index in sorted(choices, reverse=True):
             del player.hand[index - 1]
-        return self._maybe_start_judging(rng)
+        return self._maybe_start_judging(rng, now)
 
     def pick_winner(self, user_id: int, choice: int) -> RoundResult:
         self.player(user_id)
@@ -286,8 +320,41 @@ class Game:
             game_over=game_over,
         )
 
+    def expire(self, now: datetime, rng: Random) -> Timeout | None:
+        """Apply the timer if the current phase is past its deadline.
+
+        - Answering: late players sit this round out and the Card Czar judges
+          the answers received; with no answer at all, the round is skipped.
+        - Judging: the round is skipped, played cards go back to their owners
+          and the Card Czar role passes to the next player.
+        """
+        round_ = self.round
+        if not self.started or round_ is None or round_.deadline is None:
+            return None
+        if now < round_.deadline:
+            return None
+
+        if round_.judging:
+            self.next_czar_id = self._successor(round_.czar_id, list(self.players))
+            self._cancel_round()
+            return Timeout(Phase.JUDGING, (round_.czar_id,), round_cancelled=True)
+
+        late = tuple(uid for uid in round_.participants if uid not in round_.answers)
+        if not round_.answers:
+            self.next_czar_id = self._successor(round_.czar_id, list(self.players))
+            self._cancel_round()
+            return Timeout(Phase.ANSWERING, late, round_cancelled=True)
+        round_.participants = [uid for uid in round_.participants if uid in round_.answers]
+        self._maybe_start_judging(rng, now)
+        return Timeout(Phase.ANSWERING, late, judging_started=True)
+
     # Internals
     # -------------------------------------------------------------------------
+
+    def _deadline(self, now: datetime | None) -> datetime | None:
+        if now is None or not self.turn_seconds:
+            return None
+        return now + timedelta(seconds=self.turn_seconds)
 
     def _round_in(self, phase: Phase) -> Round:
         if not self.started:
@@ -311,7 +378,7 @@ class Game:
                 return candidate
         return None
 
-    def _maybe_start_judging(self, rng: Random) -> bool:
+    def _maybe_start_judging(self, rng: Random, now: datetime | None = None) -> bool:
         round_ = self.round
         if round_ is None or round_.judging:
             return False
@@ -320,6 +387,7 @@ class Game:
         proposals = list(round_.participants)
         rng.shuffle(proposals)
         round_.proposals = proposals
+        round_.deadline = self._deadline(now)
         return True
 
     def _cancel_round(self) -> None:

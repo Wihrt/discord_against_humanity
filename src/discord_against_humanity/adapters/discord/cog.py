@@ -19,7 +19,13 @@ from discord_against_humanity.domain.errors import (
     GameAlreadyExistsError,
     InvalidChoiceError,
 )
-from discord_against_humanity.domain.game import DEFAULT_POINTS, MAX_POINTS, MIN_POINTS
+from discord_against_humanity.domain.game import (
+    DEFAULT_POINTS,
+    DEFAULT_TURN_SECONDS,
+    MAX_POINTS,
+    MAX_TURN_SECONDS,
+    MIN_POINTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,16 +182,20 @@ class CardsAgainstHumanity(commands.Cog):
     @app_commands.describe(
         points=f"Points needed to win (default {DEFAULT_POINTS})",
         winner_czar="House rule: the round winner becomes the next Card Czar",
+        timer=f"Seconds to answer and to judge, 0 for no timer (default {DEFAULT_TURN_SECONDS})",
     )
     async def start(
         self,
         interaction: discord.Interaction,
         points: app_commands.Range[int, MIN_POINTS, MAX_POINTS] = DEFAULT_POINTS,
         winner_czar: bool = False,
+        timer: app_commands.Range[int, 0, MAX_TURN_SECONDS] = DEFAULT_TURN_SECONDS,
     ) -> None:
         guild = _guild(interaction)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        game = await self.service.start(guild.id, points, winner_becomes_czar=winner_czar)
+        game = await self.service.start(
+            guild.id, points, winner_becomes_czar=winner_czar, turn_seconds=timer
+        )
         await interaction.followup.send(
             f"Game started, head to {messages.channel_mention(game.board_id)}!",
             ephemeral=True,

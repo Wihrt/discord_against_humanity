@@ -6,7 +6,7 @@ import pytest
 from discord_against_humanity.adapters.memory import InMemoryCardStore, InMemoryGameRepository
 from discord_against_humanity.application.service import GameService
 from discord_against_humanity.domain.cards import BlackCard, WhiteCard
-from discord_against_humanity.domain.game import Game, RoundResult
+from discord_against_humanity.domain.game import Game, RoundResult, Timeout
 
 GUILD = 1000
 CATEGORY = 2000
@@ -51,6 +51,9 @@ class RecordingNotifier:
 
     async def round_cancelled(self, game: Game, reason: str) -> None:
         self.events.append(("round_cancelled", reason))
+
+    async def round_timed_out(self, game: Game, outcome: Timeout) -> None:
+        self.events.append(("round_timed_out", outcome))
 
     async def round_won(self, game: Game, result: RoundResult) -> None:
         self.events.append(("round_won", result.winner_id))

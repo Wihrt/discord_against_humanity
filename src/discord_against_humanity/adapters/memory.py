@@ -24,6 +24,9 @@ class InMemoryGameRepository:
     async def delete(self, guild_id: int) -> None:
         self.games.pop(guild_id, None)
 
+    async def all(self) -> list[Game]:
+        return [deepcopy(game) for game in self.games.values()]
+
 
 class InMemoryCardStore:
     def __init__(

@@ -32,3 +32,11 @@ class ValkeyGameRepository:
 
     async def delete(self, guild_id: int) -> None:
         await self._client.delete(self._key(guild_id))
+
+    async def all(self) -> list[Game]:
+        games = []
+        async for key in self._client.scan_iter(match=f"{self._prefix}:*"):
+            raw = await self._client.get(key)
+            if raw is not None:
+                games.append(game_from_dict(json.loads(raw)))
+        return games
