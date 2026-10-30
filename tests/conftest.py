@@ -1,126 +1,92 @@
-"""Shared fixtures for Discord Against Humanity tests."""
-
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
-from uuid import uuid4
+from random import Random
+from typing import Any
 
 import pytest
 
-from discord_against_humanity.ports.repository import Repository
+from discord_against_humanity.adapters.memory import InMemoryCardStore, InMemoryGameRepository
+from discord_against_humanity.application.service import GameService
+from discord_against_humanity.domain.cards import BlackCard, WhiteCard
+from discord_against_humanity.domain.game import Game, RoundResult
+
+GUILD = 1000
+CATEGORY = 2000
+BOARD = 2001
+
+
+def make_black_cards(count: int = 20, pick: int = 1) -> list[BlackCard]:
+    return [BlackCard(id=f"b{i}", text=f"Question {i}: _.", pick=pick) for i in range(count)]
+
+
+def make_white_cards(count: int = 200) -> list[WhiteCard]:
+    return [WhiteCard(id=f"w{i}", text=f"Answer {i}.") for i in range(count)]
+
+
+class RecordingNotifier:
+    """Test double for the GameNotifier port: records every event."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, Any]] = []
+
+    def names(self) -> list[str]:
+        return [name for name, _ in self.events]
+
+    async def player_joined(self, game: Game, user_id: int) -> None:
+        self.events.append(("player_joined", user_id))
+
+    async def player_left(self, game: Game, user_id: int) -> None:
+        self.events.append(("player_left", user_id))
+
+    async def game_started(self, game: Game) -> None:
+        self.events.append(("game_started", None))
+
+    async def round_started(self, game: Game) -> None:
+        assert game.round is not None
+        self.events.append(("round_started", game.round.tsar_id))
+
+    async def answer_received(self, game: Game, user_id: int) -> None:
+        self.events.append(("answer_received", user_id))
+
+    async def judging_started(self, game: Game) -> None:
+        self.events.append(("judging_started", None))
+
+    async def round_cancelled(self, game: Game, reason: str) -> None:
+        self.events.append(("round_cancelled", reason))
+
+    async def round_won(self, game: Game, result: RoundResult) -> None:
+        self.events.append(("round_won", result.winner_id))
+
+    async def game_over(self, game: Game, winner_id: int) -> None:
+        self.events.append(("game_over", winner_id))
+
+    async def game_stopped(self, game: Game, reason: str) -> None:
+        self.events.append(("game_stopped", reason))
 
 
 @pytest.fixture
-def mock_valkey_client():
-    """Create a mock async Valkey client.
-
-    The Valkey client is used via get/set/sadd/srandmember/etc.,
-    so we mock the relevant methods.
-    """
-    client = MagicMock()
-    client.get = AsyncMock(return_value=None)
-    client.set = AsyncMock()
-    client.delete = AsyncMock()
-    client.exists = AsyncMock(return_value=True)
-    client.sadd = AsyncMock()
-    client.srem = AsyncMock()
-    client.srandmember = AsyncMock(return_value=None)
-    client.scard = AsyncMock(return_value=0)
-    return client
-
-
-def _create_mock_repo():
-    """Build a fresh mock Repository."""
-    repo = MagicMock(spec=Repository)
-    repo.find_by_id = AsyncMock(return_value=None)
-    repo.find_one = AsyncMock(return_value=None)
-    repo.insert = AsyncMock(return_value=str(uuid4()))
-    repo.replace = AsyncMock(return_value={})
-    repo.delete_by_id = AsyncMock()
-    repo.random_member = AsyncMock(return_value=None)
-    repo.count = AsyncMock(return_value=0)
-    return repo
+def rng() -> Random:
+    return Random(42)
 
 
 @pytest.fixture
-def mock_repo():
-    """Create a mock Repository."""
-    return _create_mock_repo()
+def games() -> InMemoryGameRepository:
+    return InMemoryGameRepository()
 
 
 @pytest.fixture
-def mock_repo_factory():
-    """Create a mock RepositoryFactory.
-
-    Returns the same mock Repository for any collection name
-    so tests can inspect it easily.
-    """
-    repo = _create_mock_repo()
-    factory = MagicMock(side_effect=lambda _collection: repo)
-    factory._repo = repo  # expose for test assertions
-    return factory
+def deck(rng: Random) -> InMemoryCardStore:
+    return InMemoryCardStore(make_black_cards(), make_white_cards(), rng=rng)
 
 
 @pytest.fixture
-def mock_bot():
-    """Create a mock Discord Bot."""
-    bot = MagicMock()
-    bot.get_guild = MagicMock(return_value=None)
-    return bot
+def notifier() -> RecordingNotifier:
+    return RecordingNotifier()
 
 
 @pytest.fixture
-def mock_guild():
-    """Create a mock Discord Guild."""
-    from discord import Guild
-
-    guild = MagicMock(spec=Guild)
-    guild.id = 123456789
-    guild.get_channel = MagicMock(return_value=None)
-    guild.get_member = MagicMock(return_value=None)
-    return guild
-
-
-@pytest.fixture
-def mock_member(mock_guild):
-    """Create a mock Discord Member."""
-    from discord import Member
-
-    member = MagicMock(spec=Member)
-    member.id = 987654321
-    member.display_name = "TestPlayer"
-    member.mention = "<@987654321>"
-    # Guild property needs to be accessible
-    type(member).guild = PropertyMock(return_value=mock_guild)
-    return member
-
-
-@pytest.fixture
-def mock_text_channel():
-    """Create a mock Discord TextChannel."""
-    from discord import TextChannel
-
-    channel = MagicMock(spec=TextChannel)
-    channel.id = 111222333
-    channel.send = AsyncMock()
-    return channel
-
-
-@pytest.fixture
-def mock_category_channel():
-    """Create a mock Discord CategoryChannel."""
-    from discord import CategoryChannel
-
-    category = MagicMock(spec=CategoryChannel)
-    category.id = 444555666
-    return category
-
-
-@pytest.fixture
-def sample_doc_id():
-    """Return a sample document ID for testing."""
-    return str(uuid4())
-
-
-@pytest.fixture
-def sample_doc_ids():
-    """Return a list of sample document IDs for testing."""
-    return [str(uuid4()) for _ in range(5)]
+def service(
+    games: InMemoryGameRepository,
+    deck: InMemoryCardStore,
+    notifier: RecordingNotifier,
+    rng: Random,
+) -> GameService:
+    return GameService(games, deck, notifier, rng=rng)
