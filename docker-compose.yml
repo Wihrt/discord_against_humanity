@@ -1,38 +1,52 @@
+# Local stack: `mise run compose:up` (DISCORD_TOKEN is read from .env).
+x-bot: &bot
+  build: .
+  image: discord-against-humanity:dev
+  # Same constraints as the Kubernetes "restricted" profile.
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  networks: [internal]
+
 services:
-  bot:
-    build: .
+  valkey:
+    image: valkey/valkey:9@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
+    command: ["valkey-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - valkey-data:/data
+    networks: [internal]
+
+  seed:
+    <<: *bot
+    command: ["seed"]
     environment:
-      VALKEY_HOST: "valkey"
-      VALKEY_PORT: "6379"
-      DISCORD_TOKEN: "${DISCORD_TOKEN}"
-    networks:
-      - internal
+      VALKEY_HOST: valkey
+      CARDS_SOURCE: ${CARDS_SOURCE:-}
+    depends_on:
+      valkey:
+        condition: service_healthy
+    restart: "no"
+
+  bot:
+    <<: *bot
+    command: ["run"]
+    environment:
+      VALKEY_HOST: valkey
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       seed:
         condition: service_completed_successfully
-
-  valkey:
-    image: valkey/valkey:8
-    networks:
-      - internal
-    volumes:
-      - valkey-data:/data
-
-  seed:
-    build:
-      context: .
-      dockerfile: Dockerfile.seed
-    environment:
-      VALKEY_HOST: "valkey"
-      VALKEY_PORT: "6379"
-    networks:
-      - internal
-    depends_on:
-      - valkey
+    restart: unless-stopped
 
 networks:
-  internal:
-    driver: bridge
+  internal: {}
 
 volumes:
   valkey-data: {}
