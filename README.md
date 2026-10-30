@@ -1,227 +1,200 @@
 # Discord Against Humanity
 
-A Discord bot that lets you play **Cards Against Humanity** with your friends directly inside a Discord server.
+A Discord bot to play **Cards Against Humanity** with your friends, right inside your server.
 
-## Features
+- Slash commands only, no privileged intent required.
+- Each player gets a private channel showing their hand; the game happens on a shared `#board`.
+- State is stored in [Valkey](https://valkey.io); cards come from
+  [JSON Against Humanity](https://github.com/crhallberg/json-against-humanity) (6,000+ black
+  and 22,000+ white cards).
+- Shipped as a multi-arch container image on GHCR and a Helm chart compliant with the Kubernetes
+  [`restricted` Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted).
 
-- **Slash commands** — all interactions use Discord's native slash commands (`/create`, `/join`, `/vote`, …).
-- **Async** — built on top of [discord.py](https://discordpy.readthedocs.io/) 2.x and [Motor](https://motor.readthedocs.io/) for fully asynchronous I/O.
-- **MongoDB** persistence — game state, players, and cards are stored in MongoDB 8.
-- **Containerised** — ships with an optimised, multi-stage Dockerfile (non-root, bytecode-compiled).
-- **Kubernetes-ready** — includes a Helm chart for one-command deployments.
+## How to play
 
-## How to Play
+| Command | Who | What it does |
+|---------|-----|--------------|
+| `/create` | anyone | Creates the game: a category and a `#board` channel |
+| `/join` | anyone | Joins the game and opens your private channel |
+| `/start [points]` | player | Starts the game (first to `points`, default 5, wins) |
+| `/vote answers:<n…>` | player | Plays card(s) from your hand, e.g. `/vote answers:3` or `/vote answers:2 5` |
+| `/tsar answer:<n>` | tsar | Picks the winning answer |
+| `/hand` | player | Shows your cards |
+| `/score` | anyone | Shows the scoreboard |
+| `/stop` | anyone | Stops the current game (back to the lobby) |
+| `/leave` | player | Leaves the game |
+| `/delete` | anyone | Deletes the game and its channels |
+| `/reminder` | anyone | Shows the rules |
 
-| Step | Command | Description |
-|------|---------|-------------|
-| 1 | `/create` | Create a new game in the current server |
-| 2 | `/join` | Join the game (each player gets a private channel) |
-| 3 | `/start` | Start the game (optional: `/start points:10`) |
-| 4 | `/vote` | Players pick white cards via `/vote answers:1 3` |
-| 5 | `/tsar` | The Tsar selects the winning answer via `/tsar answer:2` |
-| 6 | `/score` | View the scoreboard at any time |
-| 7 | `/stop` | Stop the game early |
-| 8 | `/leave` | Leave the game |
-| 9 | `/delete` | Delete the game and clean up channels |
+Each round a black card is drawn and everyone but the **tsar** answers. Once all answers are in,
+they are revealed anonymously and the tsar picks the best one. The winner scores a point and
+becomes the next tsar. Players may join or leave at any time: late joiners play from the next
+round, and if the tsar leaves the round is replayed.
 
-Use `/reminder` to display the game rules at any time.
+The bot needs the **Manage Channels** permission, plus **View Channels** and **Send Messages**.
+Invite it with the `bot` and `applications.commands` scopes.
 
-## Requirements
+## Getting started
 
-- Python ≥ 3.13
-- MongoDB ≥ 8
-- A [Discord Bot Token](https://discord.com/developers/applications)
-- [uv](https://docs.astral.sh/uv/) (for local development)
-- [Task](https://taskfile.dev/) (optional — task runner)
-
-## Local Development
-
-```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone and install
-git clone https://github.com/Wihrt/discord_against_humanity.git
-cd discord_against_humanity
-uv sync          # installs all deps including dev tools
-
-# Run linter, tests and type checker
-uv run ruff check src/ tests/
-uv run pytest
-uv run mypy src/
-
-# Start the bot (requires DISCORD_TOKEN and a running MongoDB)
-export DISCORD_TOKEN="your-token-here"
-export MONGO_HOST="localhost"
-export MONGO_PORT="27017"
-uv run discord-against-humanity
-```
-
-### Using the Taskfile
-
-If you have [Task](https://taskfile.dev/) installed you can use the provided
-`Taskfile.yml` instead of remembering individual commands:
+The whole toolchain is described in [`mise.toml`](mise.toml). [uv](https://docs.astral.sh/uv/)
+is the only supported way to manage Python dependencies.
 
 ```bash
-task sync          # install / update dependencies
-task lint          # run ruff
-task test          # run pytest
-task typecheck     # run mypy
-task check         # run all quality checks
-task docker:build  # build the Docker image
-task docker:up     # start the Docker Compose stack
-task docker:down   # stop the stack
-task run           # start the bot locally
+# 1. Install mise: https://mise.jdx.dev/getting-started.html
+# 2. Install the tools (Python, uv, prek, Helm) and the git hooks
+mise install
+mise run setup
+# 3. List the available tasks
+mise tasks
 ```
 
-Run `task` (no arguments) to see the full list of available tasks.
+Put your secrets in a git-ignored `.env` file, which mise and Docker Compose both read:
 
-## Seeding the Card Database
+```env
+DISCORD_TOKEN=your-bot-token
+```
 
-The bot requires **black cards** (questions) and **white cards** (answers) to
-be present in MongoDB before a game can start.
-
-### 1. Obtain a CAH JSON file
-
-You can download a ready-made Cards Against Humanity JSON file from
-**<https://crhallberg.com/cah/>** (select the packs you want and export as
-JSON).  Save the file as `cah.json` in the repository root.
-
-### 2. Convert to MongoDB seed files
+### Run locally
 
 ```bash
-# Writes mongo/seed/black_cards.json and mongo/seed/white_cards.json
-python scripts/convert_cah.py cah.json --output-dir mongo/seed
-
-# Or via the Taskfile
-task seed:convert -- cah.json --output-dir mongo/seed
+docker run -d --name valkey -p 6379:6379 valkey/valkey:9
+mise run seed       # load the card catalog (only once)
+mise run run        # start the bot
 ```
 
-### 3. Import into MongoDB
-
-**Docker Compose (automatic):** The `docker-compose.yml` mounts `mongo/` into
-the MongoDB container's `/docker-entrypoint-initdb.d/` directory.  On a fresh
-volume the init script runs `mongoimport` automatically.
+Or run the full stack (Valkey, seeding, bot) with Docker Compose:
 
 ```bash
-# First time — seed data is imported automatically
-docker compose up -d
+mise run compose:up
 ```
 
-> **Note:** MongoDB only runs init scripts when the data volume is empty. To
-> re-seed, remove the volume first: `docker compose down -v && docker compose up -d`.
+### Quality gates
 
-**Manual import:**
+Git hooks are managed by [prek](https://prek.j178.dev) (a fast `pre-commit` drop-in) and the CI
+runs exactly the same hooks:
+
+| Gate | Tool | When |
+|------|------|------|
+| Lint & format | [Ruff](https://docs.astral.sh/ruff/) | commit |
+| Types | [ty](https://docs.astral.sh/ty/) | commit |
+| Hexagonal layers | [import-linter](https://import-linter.readthedocs.io) | commit |
+| Lockfile in sync | `uv lock` (uv-pre-commit) | commit |
+| Dockerfile | [hadolint](https://github.com/hadolint/hadolint) | commit |
+| GitHub workflows | [actionlint](https://github.com/rhysd/actionlint) | commit |
+| Helm chart | `helm lint --strict` | commit |
+| Secrets | [gitleaks](https://github.com/gitleaks/gitleaks) | commit |
+| Unit tests | pytest | push |
+| Integration tests | pytest + [Testcontainers](https://testcontainers.com) (Docker) | CI |
+
+`mise run check` runs every hook on the whole repository.
+
+## Architecture
+
+The code follows a hexagonal (ports & adapters) architecture. The dependency rule is enforced
+by import-linter: inner layers never import outer ones, the core never imports `discord` or
+`valkey`, and adapters do not depend on each other.
+
+```
+src/discord_against_humanity/
+├── domain/          Pure game rules: Game aggregate, cards, errors. No I/O.
+├── application/
+│   ├── ports.py     Interfaces needed by the core: GameRepository, CardDeck,
+│   │                CardCatalog, GameNotifier
+│   ├── service.py   Use cases: create, join, start, vote, pick winner…
+│   └── seeding.py   Use case: load the card catalog
+├── adapters/
+│   ├── discord/     Slash commands (driving) and notifications (driven)
+│   ├── valkey/      Game repository and card store
+│   ├── memory.py    In-memory implementations (tests)
+│   └── cah_json.py  Reader for JSON Against Humanity exports
+├── config.py        Settings from environment variables
+└── main.py          Composition root and CLI
+```
+
+The game is event-driven: the last answer opens the judging phase, and the tsar's pick scores and
+starts the next round. Every use case runs under a per-guild lock, so the bot must run as
+**a single process** (which a Discord bot token requires anyway).
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD_TOKEN` | — | Bot token (required to run the bot) |
+| `VALKEY_HOST` | `localhost` | Valkey host |
+| `VALKEY_PORT` | `6379` | Valkey port |
+| `VALKEY_DB` | `0` | Valkey database number |
+| `VALKEY_PASSWORD` | — | Valkey password, if any |
+| `LOG_LEVEL` | `INFO` | Python log level |
+| `CARDS_SOURCE` | public catalog | Path or URL used by `seed` when no argument is given |
+
+### Card catalog
 
 ```bash
-mongoimport --db cards_against_humanity \
-            --collection black_cards \
-            --file mongo/seed/black_cards.json \
-            --jsonArray
-
-mongoimport --db cards_against_humanity \
-            --collection white_cards \
-            --file mongo/seed/white_cards.json \
-            --jsonArray
+discord-against-humanity seed                       # full public catalog
+discord-against-humanity seed --official-only       # official packs only
+discord-against-humanity seed ./my-cards.json       # local file or any URL
+discord-against-humanity seed --force               # replace the existing catalog
 ```
 
-## Deploy with Docker Compose
+The command understands the compact, full and legacy formats from
+[crhallberg.com/cah](https://crhallberg.com/cah/), and does nothing if cards are already loaded.
+Card IDs are derived from the card text, so seeding is idempotent. Catalogs seeded by earlier
+versions of the bot are still compatible.
 
-1. Create a `.env` file:
+## Deployment
 
-   ```env
-   DISCORD_TOKEN=your-bot-token-here
-   ```
+### Container image
 
-2. Make sure `mongo/seed/` contains the card data (see [Seeding the Card Database](#seeding-the-card-database)).
+Each push to `master` publishes `ghcr.io/wihrt/discord_against_humanity` (`linux/amd64` and
+`linux/arm64`, with SBOM and provenance), tagged `latest` and `sha-<commit>`. Pushing a `vX.Y.Z`
+git tag also publishes `X.Y.Z` and `X.Y`. Pull requests build the image without pushing it.
 
-3. Start the stack:
+The image runs as UID `10001`, contains neither uv nor the sources, and works with a read-only root
+filesystem and no Linux capabilities.
 
-   ```bash
-   docker compose up -d
-   ```
-
-   This starts:
-   - **bot** — the Discord bot (Python 3.13, non-root)
-   - **mongo** — MongoDB 8 (seeded with card data on first start)
-
-4. Stop:
-
-   ```bash
-   docker compose down
-   ```
-
-## Deploy with Helm (Kubernetes)
-
-### Using an existing Secret
-
-Create a Kubernetes Secret containing your Discord token before installing the chart:
+### Kubernetes (Helm)
 
 ```bash
-kubectl create secret generic discord-bot-token \
-  --from-literal=DISCORD_TOKEN=your-token-here
+kubectl create namespace cah
+kubectl label namespace cah pod-security.kubernetes.io/enforce=restricted
+kubectl -n cah create secret generic discord-bot --from-literal=DISCORD_TOKEN=your-token
+
+helm install cah helm/discord-against-humanity -n cah \
+  --set existingSecret=discord-bot \
+  --set valkey.host=valkey.example.svc.cluster.local
 ```
 
-Then install the chart referencing that secret:
+A post-install/post-upgrade Job loads the card catalog (`seed.enabled`). The CI checks that the
+chart is admitted in a namespace enforcing the `restricted` profile.
 
-```bash
-helm install my-bot helm/discord-against-humanity \
-  --set existingSecret=discord-bot-token \
-  --set mongodb.host=my-mongo-service
-```
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `image.repository` | `ghcr.io/wihrt/discord_against_humanity` | Image |
+| `image.tag` | chart `appVersion` | Image tag |
+| `image.digest` | `""` | Optional immutable digest |
+| `existingSecret` | `""` | Secret holding `DISCORD_TOKEN` |
+| `discordToken` | `""` | Token, used only without `existingSecret` |
+| `valkey.host` / `valkey.port` / `valkey.db` | `valkey` / `6379` / `0` | Valkey server |
+| `valkey.passwordSecret.name` / `.key` | `""` / `password` | Optional Valkey password Secret |
+| `logLevel` | `INFO` | Log level |
+| `seed.enabled` | `true` | Run the seed Job |
+| `seed.source` | `""` | Card source (path or URL), defaults to the public catalog |
+| `seed.officialOnly` | `false` | Only load official packs |
+| `podSecurityContext` / `securityContext` | restricted | Security contexts |
+| `resources` | 50m / 96Mi, limit 256Mi | Bot resources |
 
-### Letting the chart create the Secret
+## Dependency updates
 
-```bash
-helm install my-bot helm/discord-against-humanity \
-  --set discordToken=your-token-here \
-  --set mongodb.host=my-mongo-service
-```
-
-### Configuration
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `image.repository` | Container image | `ghcr.io/wihrt/discord_against_humanity` |
-| `image.tag` | Image tag | `latest` |
-| `existingSecret` | Name of a pre-existing Secret with `DISCORD_TOKEN` | `""` |
-| `discordToken` | Bot token (used only when `existingSecret` is empty) | `""` |
-| `mongodb.host` | MongoDB hostname | `mongo` |
-| `mongodb.port` | MongoDB port | `27017` |
-| `resources.requests.cpu` | CPU request | `100m` |
-| `resources.requests.memory` | Memory request | `128Mi` |
-| `resources.limits.cpu` | CPU limit | `200m` |
-| `resources.limits.memory` | Memory limit | `256Mi` |
-
-## CI / CD
-
-| Workflow | Trigger | Steps |
-|----------|---------|-------|
-| **PR** | Pull request → `main` | Ruff → Pytest → mypy → Docker build (no push) |
-| **Main** | Push to `main` | Ruff → Pytest → Docker build & push (`ghcr.io`, tagged with short SHA + `latest`) |
-| **Tag** | Manual dispatch | Docker build & push tagged with the given version |
-
-## Project Structure
-
-```
-.
-├── src/discord_against_humanity/   # Bot source code
-│   ├── bot.py                      # Entry point & bot setup
-│   ├── commands/cah.py             # Slash command Cog
-│   ├── checks/game_checks.py      # Pre-command validation
-│   ├── domain/                     # Domain models (game, player, cards)
-│   ├── infrastructure/mongo.py     # Repository pattern & MongoDB base class
-│   └── utils/                      # Embed builder & debug decorator
-├── tests/                          # Unit tests (pytest)
-├── scripts/convert_cah.py          # Card data converter
-├── mongo/                          # MongoDB seed scripts & data
-├── helm/                           # Helm chart
-├── Taskfile.yml                    # Task runner configuration
-├── Dockerfile                      # Multi-stage, non-root, uv-based
-├── docker-compose.yml              # Local stack (bot + MongoDB 8)
-└── pyproject.toml                  # Project & tool configuration (uv)
-```
+[Renovate](https://docs.renovatebot.com) ([`renovate.json`](renovate.json)) keeps everything up to
+date: Python packages (`uv.lock`), mise tools, prek hooks, Docker images (pinned by digest), GitHub
+Actions (pinned by commit SHA) and the Valkey image used in tests. It runs on Monday mornings
+(Europe/Paris), groups related updates and merges low-risk ones once the CI is green. Runtime
+dependencies and new Python minor versions always wait for a human review.
 
 ## License
 
-This project is open source. See the repository for details.
+No license has been chosen for this project yet.
+
+Card texts come from [JSON Against Humanity](https://github.com/crhallberg/json-against-humanity),
+based on Cards Against Humanity, which is distributed under a
+[Creative Commons BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) license.
