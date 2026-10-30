@@ -7,7 +7,7 @@ reacted). Each click is its own interaction, so the order is never lost.
 All the state lives in the buttons' custom IDs (current round, cards picked
 so far): the buttons keep working after a restart and the selection in
 progress needs no storage. Only the final choice reaches the application
-layer, through the same use cases as ``/vote`` and ``/tsar``.
+layer, through the same use cases as ``/vote`` and ``/czar``.
 """
 
 import logging
@@ -222,8 +222,8 @@ def judge_view(round_: Round, selected: int | None = None) -> ui.View:
 
 async def _load_judging(interaction: discord.Interaction, round_id: str) -> tuple[Game, Round]:
     game, player, round_ = await _load(interaction, round_id)
-    if player.user_id != round_.tsar_id:
-        raise WrongPhaseError("Only the tsar can pick the winner.")
+    if player.user_id != round_.czar_id:
+        raise WrongPhaseError("Only the Card Czar can pick the winner.")
     if game.phase is not Phase.JUDGING:
         raise WrongPhaseError("It is not time to judge.")
     return game, round_

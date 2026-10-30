@@ -79,14 +79,14 @@ class FakeClient:
 async def test_round_started_reaches_every_player() -> None:
     client = FakeClient()
     notifier = DiscordNotifier(cast(discord.Client, client))
-    game = started_game(players=3, tsar=1)
+    game = started_game(players=3, czar=1)
     game.add_player(9, channel_id=109)
 
     await notifier.round_started(game)
 
     board = client.channels[game.board_id].sent
     assert "<@1>" in (board[0][0] or "")
-    assert "tsar" in (client.channels[101].sent[0][0] or "")
+    assert "Card Czar" in (client.channels[101].sent[0][0] or "")
     assert "first blank" in (client.channels[102].sent[0][0] or "")
     assert client.channels[102].sent[0][1]["view"] is not None
     assert len(client.channels[102].sent[0][1]["embeds"]) == 2

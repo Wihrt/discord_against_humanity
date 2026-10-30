@@ -37,14 +37,14 @@ def draft_text(card: BlackCard, answers: Sequence[WhiteCard]) -> str:
 def rules_embed() -> discord.Embed:
     embed = discord.Embed(title="How to play", colour=_BLACK)
     embed.description = (
-        "1. Each round, a **tsar** is chosen and a black card is drawn.\n"
+        "1. Each round, a **Card Czar** is chosen and a black card is drawn.\n"
         "2. Everyone else clicks white cards from their hand, in their private "
         "channel. The first card clicked fills the first blank.\n"
-        "3. Once all answers are in, the tsar picks the funniest one.\n"
-        "4. The winner scores a point and becomes the next tsar.\n"
+        "3. Once all answers are in, the Card Czar picks the funniest one.\n"
+        "4. The winner scores a point, and the Card Czar role passes to the next player.\n"
         "5. The first player to reach the target score wins.\n\n"
         "`/hand` shows your cards, `/score` the scoreboard. "
-        "`/vote` and `/tsar` work too, e.g. `/vote answers:2 5`."
+        "`/vote` and `/czar` work too, e.g. `/vote answers:2 5`."
     )
     return embed
 
@@ -52,10 +52,12 @@ def rules_embed() -> discord.Embed:
 def question_embed(round_: Round) -> discord.Embed:
     card = round_.black_card
     return discord.Embed(
-        title=f"Question — pick {card.pick}",
+        title=f"Question — draw {card.draw}, pick {card.pick}"
+        if card.draw
+        else f"Question — pick {card.pick}",
         description=question_text(card),
         colour=_BLACK,
-    ).set_footer(text="Tsar: see the board")
+    ).set_footer(text="Card Czar: see the board")
 
 
 def hand_embed(cards: Sequence[WhiteCard]) -> discord.Embed:

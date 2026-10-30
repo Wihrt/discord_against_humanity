@@ -27,7 +27,7 @@ def _black_from(data: dict[str, Any]) -> BlackCard:
 def _round(round_: Round) -> dict[str, Any]:
     return {
         "black_card": _black(round_.black_card),
-        "tsar_id": round_.tsar_id,
+        "czar_id": round_.czar_id,
         "participants": list(round_.participants),
         # JSON object keys must be strings, so answers are stored as pairs.
         "answers": [
@@ -40,7 +40,7 @@ def _round(round_: Round) -> dict[str, Any]:
 def _round_from(data: dict[str, Any]) -> Round:
     return Round(
         black_card=_black_from(data["black_card"]),
-        tsar_id=data["tsar_id"],
+        czar_id=data["czar_id"],
         participants=list(data["participants"]),
         answers={uid: [_white_from(c) for c in cards] for uid, cards in data["answers"]},
         proposals=list(data["proposals"]),
@@ -65,7 +65,8 @@ def game_to_dict(game: Game) -> dict[str, Any]:
         "points_to_win": game.points_to_win,
         "started": game.started,
         "round": _round(game.round) if game.round is not None else None,
-        "next_tsar_id": game.next_tsar_id,
+        "next_czar_id": game.next_czar_id,
+        "winner_becomes_czar": game.winner_becomes_czar,
         "used_black_cards": sorted(game.used_black_cards),
         "discarded_white_cards": sorted(game.discarded_white_cards),
     }
@@ -91,7 +92,8 @@ def game_from_dict(data: dict[str, Any]) -> Game:
         points_to_win=data["points_to_win"],
         started=data["started"],
         round=_round_from(data["round"]) if data["round"] is not None else None,
-        next_tsar_id=data["next_tsar_id"],
+        next_czar_id=data["next_czar_id"],
+        winner_becomes_czar=data.get("winner_becomes_czar", False),
         used_black_cards=set(data["used_black_cards"]),
         discarded_white_cards=set(data["discarded_white_cards"]),
     )
