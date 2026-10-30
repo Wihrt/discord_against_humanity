@@ -1,0 +1,75 @@
+# Git hooks, run with prek (https://prek.j178.dev): `mise run setup` installs them.
+# The CI runs the very same hooks, so a green local push means a green pipeline.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-json
+      - id: check-yaml
+        exclude: ^helm/.*/templates/
+      - id: detect-private-key
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.6
+    hooks:
+      - id: uv-lock
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.12.25
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type check)
+        entry: uv run --locked ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+      - id: import-linter
+        name: import-linter (hexagonal contracts)
+        entry: uv run --locked lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: helm-lint
+        name: helm lint
+        entry: helm lint --strict helm/discord-against-humanity
+        language: system
+        files: ^helm/
+        pass_filenames: false
+      - id: pytest
+        name: pytest (unit)
+        entry: uv run --locked pytest -m "not integration" -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

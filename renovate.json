@@ -1,6 +1,103 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
-  ]
+    "config:recommended",
+    ":configMigration",
+    ":maintainLockFilesWeekly",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "timezone": "Europe/Paris",
+  "schedule": [
+    "* 0-6 * * 1"
+  ],
+  "prHourlyLimit": 0,
+  "labels": [
+    "dependencies"
+  ],
+  "pre-commit": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Low-risk updates merge themselves once the CI is green",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest",
+        "lockFileMaintenance"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Keep each tool in sync across uv.lock, mise.toml, prek hooks and the Dockerfile",
+      "matchPackageNames": [
+        "ruff",
+        "astral-sh/ruff-pre-commit"
+      ],
+      "groupName": "ruff"
+    },
+    {
+      "matchPackageNames": [
+        "uv",
+        "uv_build",
+        "astral-sh/uv",
+        "astral-sh/uv-pre-commit",
+        "ghcr.io/astral-sh/uv"
+      ],
+      "groupName": "uv"
+    },
+    {
+      "matchPackageNames": [
+        "prek",
+        "j178/prek"
+      ],
+      "groupName": "prek"
+    },
+    {
+      "matchPackageNames": [
+        "valkey/valkey"
+      ],
+      "groupName": "valkey server"
+    },
+    {
+      "description": "A new Python minor touches mise, .python-version, the Dockerfile and requires-python: review it by hand",
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "groupName": "python",
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Runtime dependencies of the bot are always reviewed by a human",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "project.dependencies"
+      ],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Valkey image used by the integration tests",
+      "managerFilePatterns": [
+        "/^tests/.+\\.py$/"
+      ],
+      "matchStrings": [
+        "VALKEY_IMAGE = \"(?<depName>[^:\"]+):(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "osvVulnerabilityAlerts": true
 }
