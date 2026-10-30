@@ -63,17 +63,17 @@
       "groupName": "valkey server"
     },
     {
-      "description": "A new Python minor touches mise, .python-version, the Dockerfile and requires-python: review it by hand",
-      "matchPackageNames": [
-        "python"
-      ],
+      "description": "A new Python minor touches mise, .python-version, the Dockerfile and requires-python: review it by hand. Matched by dep name: mise and pyenv report another package name.",
       "matchUpdateTypes": [
         "major",
         "minor"
       ],
       "groupName": "python",
       "dependencyDashboardApproval": true,
-      "automerge": false
+      "automerge": false,
+      "matchDepNames": [
+        "python"
+      ]
     },
     {
       "description": "Runtime dependencies of the bot are always reviewed by a human",
