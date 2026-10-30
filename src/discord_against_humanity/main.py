@@ -15,6 +15,7 @@ from valkey.asyncio import Valkey
 
 from discord_against_humanity.adapters.cah_json import DEFAULT_SOURCE, load_source, parse_cards
 from discord_against_humanity.adapters.discord.bot import CardsBot
+from discord_against_humanity.adapters.scheduler import AsyncioScheduler
 from discord_against_humanity.adapters.valkey import ValkeyCardStore, ValkeyGameRepository
 from discord_against_humanity.application.ports import GameNotifier
 from discord_against_humanity.application.seeding import seed_cards
@@ -58,8 +59,10 @@ async def run_bot(settings: Settings) -> int:
     if not black or not white:
         logger.warning("The card catalog is empty: run the `seed` command first")
 
+    scheduler = AsyncioScheduler()
+
     def build_service(notifier: GameNotifier) -> GameService:
-        return GameService(ValkeyGameRepository(client), store, notifier)
+        return GameService(ValkeyGameRepository(client), store, notifier, scheduler=scheduler)
 
     bot = CardsBot(build_service)
     # Kubernetes stops pods with SIGTERM: log out cleanly instead of dying.
@@ -71,6 +74,7 @@ async def run_bot(settings: Settings) -> int:
         async with bot:
             await bot.start(settings.discord_token)
     finally:
+        await scheduler.close()
         await client.aclose()
     return 0
 

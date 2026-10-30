@@ -16,7 +16,7 @@ A Discord bot to play **Cards Against Humanity** with your friends, right inside
 |---------|-----|--------------|
 | `/create` | anyone | Creates the game: a category and a `#board` channel |
 | `/join` | anyone | Joins the game and opens your private channel |
-| `/start [points] [winner_czar]` | player | Starts the game (first to `points`, default 5, wins); see house rules below |
+| `/start [points] [winner_czar] [timer]` | player | Starts the game (first to `points`, default 5, wins); see the timer and house rules below |
 | `/vote answers:<n…>` | player | Plays card(s) without the buttons, e.g. `/vote answers:2 5` |
 | `/czar answer:<n>` | Card Czar | Picks the winning answer without the buttons |
 | `/hand` | player | Shows your cards |
@@ -39,6 +39,15 @@ The bot follows the [official rules](https://www.cardsagainsthumanity.com/):
 - The Card Czar role then passes to the next player, in join order.
 - Players may join or leave at any time: late joiners play from the next round, and if the Card
   Czar leaves the round is replayed with the next player as Card Czar.
+
+Each phase is timed (2 minutes by default, `/start timer:<seconds>` to change it, `timer:0` to
+turn it off), with a live countdown in Discord:
+
+- Players who have not answered in time sit the round out, and the Card Czar judges the answers
+  received. If nobody answered, the round is skipped.
+- If the Card Czar does not pick a winner in time, the round is skipped: played cards go back to
+  their owners and the role passes to the next player.
+- Deadlines are stored with the game, so timers resume after a restart of the bot.
 
 House rule: `/start winner_czar:True` makes the round winner the next Card Czar instead, as in
 earlier versions of the bot.
@@ -117,13 +126,14 @@ src/discord_against_humanity/
 ├── domain/          Pure game rules: Game aggregate, cards, errors. No I/O.
 ├── application/
 │   ├── ports.py     Interfaces needed by the core: GameRepository, CardDeck,
-│   │                CardCatalog, GameNotifier
+│   │                CardCatalog, GameNotifier, Scheduler
 │   ├── service.py   Use cases: create, join, start, vote, pick winner…
 │   └── seeding.py   Use case: load the card catalog
 ├── adapters/
 │   ├── discord/     Slash commands (driving) and notifications (driven)
 │   ├── valkey/      Game repository and card store
 │   ├── memory.py    In-memory implementations (tests)
+│   ├── scheduler.py asyncio turn timers
 │   └── cah_json.py  Reader for JSON Against Humanity exports
 ├── config.py        Settings from environment variables
 └── main.py          Composition root and CLI

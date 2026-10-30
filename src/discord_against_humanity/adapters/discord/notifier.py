@@ -7,7 +7,7 @@ import discord
 
 from discord_against_humanity.adapters.discord import messages, views
 from discord_against_humanity.domain.cards import BlackCard
-from discord_against_humanity.domain.game import Game, RoundResult
+from discord_against_humanity.domain.game import Game, Phase, RoundResult, Timeout
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,8 @@ class DiscordNotifier:
         question = messages.question_embed(round_)
         await self._send(
             game.board_id,
-            f"{messages.mention(round_.czar_id)} is the Card Czar for this round.",
+            f"{messages.mention(round_.czar_id)} is the Card Czar for this round."
+            + messages.closes_in(round_.deadline, "Answers close"),
             embed=question,
         )
         for player in game.players.values():
@@ -80,7 +81,8 @@ class DiscordNotifier:
             elif player.user_id in round_.participants:
                 await self._send(
                     player.channel_id,
-                    _answer_instructions(round_.black_card),
+                    _answer_instructions(round_.black_card)
+                    + messages.closes_in(round_.deadline, "Answers close"),
                     embeds=messages.play_embeds(round_, player.hand, []),
                     view=views.hand_view(round_, player.hand, []),
                 )
@@ -104,15 +106,27 @@ class DiscordNotifier:
         czar = game.players[game.round.czar_id]
         await self._send(
             game.board_id,
-            f"All answers are in! {messages.mention(czar.user_id)}, pick the winner.",
+            f"Answers are in! {messages.mention(czar.user_id)}, pick the winner."
+            + messages.closes_in(game.round.deadline, "Time is up"),
             embed=proposals,
         )
         await self._send(
             czar.channel_id,
-            "Select the winning answer, then press **Crown this answer**.",
+            "Select the winning answer, then press **Crown this answer**."
+            + messages.closes_in(game.round.deadline, "Time is up"),
             embed=proposals,
             view=views.judge_view(game.round),
         )
+
+    async def round_timed_out(self, game: Game, outcome: Timeout) -> None:
+        late = ", ".join(messages.mention(uid) for uid in outcome.late)
+        if outcome.phase is Phase.JUDGING:
+            text = f":alarm_clock: {late} did not pick a winner in time: round skipped."
+        elif outcome.round_cancelled:
+            text = ":alarm_clock: Nobody answered in time: round skipped."
+        else:
+            text = f":alarm_clock: Time is up! {late} will play the next round."
+        await self._send(game.board_id, text)
 
     async def round_cancelled(self, game: Game, reason: str) -> None:
         await self._send(game.board_id, f"Round cancelled: {reason}")

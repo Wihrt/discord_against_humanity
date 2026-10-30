@@ -67,6 +67,8 @@ class CardsBot(commands.Bot):
         await self.add_cog(CardsAgainstHumanity(self.service))
         # Buttons are routed by custom ID, so they survive restarts.
         self.add_dynamic_items(*DYNAMIC_ITEMS)
+        # Timers of the games in progress before a restart.
+        await self.service.resume()
         synced = await self.tree.sync()
         logger.info("Synced %d slash commands", len(synced))
 

@@ -4,11 +4,12 @@ Driven adapters (storage, chat platform) implement these protocols; the
 application layer only ever depends on them, never on a concrete adapter.
 """
 
-from collections.abc import Collection, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
+from datetime import datetime
 from typing import Protocol
 
 from discord_against_humanity.domain.cards import BlackCard, WhiteCard
-from discord_against_humanity.domain.game import Game, RoundResult
+from discord_against_humanity.domain.game import Game, RoundResult, Timeout
 
 
 class GameRepository(Protocol):
@@ -19,6 +20,10 @@ class GameRepository(Protocol):
     async def save(self, game: Game) -> None: ...
 
     async def delete(self, guild_id: int) -> None: ...
+
+    async def all(self) -> list[Game]:
+        """Every stored game, used to re-arm timers after a restart."""
+        ...
 
 
 class CardDeck(Protocol):
@@ -45,6 +50,16 @@ class CardCatalog(Protocol):
     async def clear(self) -> None: ...
 
 
+class Scheduler(Protocol):
+    """Runs an action at a given time, at most one pending action per key."""
+
+    def schedule(self, key: int, when: datetime, action: Callable[[], Awaitable[None]]) -> None:
+        """Replace any pending action for *key*."""
+        ...
+
+    def cancel(self, key: int) -> None: ...
+
+
 class GameNotifier(Protocol):
     """Tells players what happens in their game."""
 
@@ -61,6 +76,8 @@ class GameNotifier(Protocol):
     async def judging_started(self, game: Game) -> None: ...
 
     async def round_cancelled(self, game: Game, reason: str) -> None: ...
+
+    async def round_timed_out(self, game: Game, outcome: Timeout) -> None: ...
 
     async def round_won(self, game: Game, result: RoundResult) -> None: ...
 

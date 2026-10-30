@@ -49,6 +49,11 @@ class InvalidPointsError(DomainError):
         super().__init__(f"Points to win must be between {minimum} and {maximum}.")
 
 
+class InvalidTimerError(DomainError):
+    def __init__(self, minimum: int, maximum: int) -> None:
+        super().__init__(f"The timer must be 0 (off) or between {minimum} and {maximum} seconds.")
+
+
 class WrongPhaseError(DomainError):
     """The action is not allowed at this moment of the round."""
 

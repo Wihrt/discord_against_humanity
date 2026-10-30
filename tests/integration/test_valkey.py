@@ -89,6 +89,9 @@ async def test_game_repository_round_trip(client: Valkey) -> None:
     game.add_player(1, channel_id=10)
     await repo.save(game)
     assert await repo.get(GUILD) == game
+    other = Game(guild_id=GUILD + 1, category_id=CATEGORY, board_id=BOARD)
+    await repo.save(other)
+    assert sorted(g.guild_id for g in await repo.all()) == [GUILD, GUILD + 1]
     await repo.delete(GUILD)
     assert await repo.get(GUILD) is None
 

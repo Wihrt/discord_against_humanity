@@ -1,5 +1,6 @@
 """JSON mapping of the game aggregate, kept out of the domain on purpose."""
 
+from datetime import datetime
 from typing import Any
 
 from discord_against_humanity.domain.cards import BlackCard, WhiteCard
@@ -34,6 +35,7 @@ def _round(round_: Round) -> dict[str, Any]:
             [uid, [_white(card) for card in cards]] for uid, cards in round_.answers.items()
         ],
         "proposals": list(round_.proposals),
+        "deadline": round_.deadline.isoformat() if round_.deadline is not None else None,
     }
 
 
@@ -44,6 +46,7 @@ def _round_from(data: dict[str, Any]) -> Round:
         participants=list(data["participants"]),
         answers={uid: [_white_from(c) for c in cards] for uid, cards in data["answers"]},
         proposals=list(data["proposals"]),
+        deadline=datetime.fromisoformat(data["deadline"]) if data.get("deadline") else None,
     )
 
 
@@ -67,6 +70,7 @@ def game_to_dict(game: Game) -> dict[str, Any]:
         "round": _round(game.round) if game.round is not None else None,
         "next_czar_id": game.next_czar_id,
         "winner_becomes_czar": game.winner_becomes_czar,
+        "turn_seconds": game.turn_seconds,
         "used_black_cards": sorted(game.used_black_cards),
         "discarded_white_cards": sorted(game.discarded_white_cards),
     }
@@ -94,6 +98,7 @@ def game_from_dict(data: dict[str, Any]) -> Game:
         round=_round_from(data["round"]) if data["round"] is not None else None,
         next_czar_id=data["next_czar_id"],
         winner_becomes_czar=data.get("winner_becomes_czar", False),
+        turn_seconds=data.get("turn_seconds", 0),
         used_black_cards=set(data["used_black_cards"]),
         discarded_white_cards=set(data["discarded_white_cards"]),
     )

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from random import Random
 from typing import Any, cast
 
@@ -11,6 +12,7 @@ from discord_against_humanity.adapters.discord.cog import parse_choices
 from discord_against_humanity.adapters.discord.notifier import DiscordNotifier
 from discord_against_humanity.domain.cards import BlackCard, WhiteCard
 from discord_against_humanity.domain.errors import InvalidChoiceError, NoGameError
+from discord_against_humanity.domain.game import Phase, Timeout
 from tests.unit.test_game import everyone_answers, started_game
 
 
@@ -91,3 +93,27 @@ async def test_round_started_reaches_every_player() -> None:
     assert client.channels[102].sent[0][1]["view"] is not None
     assert len(client.channels[102].sent[0][1]["embeds"]) == 2
     assert "next one" in (client.channels[109].sent[0][0] or "")
+
+
+async def test_timeouts_are_announced_on_the_board() -> None:
+    client = FakeClient()
+    notifier = DiscordNotifier(cast(discord.Client, client))
+    game = started_game(players=3)
+    board = client.channels.setdefault(game.board_id, FakeChannel()).sent
+
+    await notifier.round_timed_out(game, Timeout(Phase.ANSWERING, (3,), judging_started=True))
+    await notifier.round_timed_out(game, Timeout(Phase.ANSWERING, (2, 3), round_cancelled=True))
+    await notifier.round_timed_out(game, Timeout(Phase.JUDGING, (1,), round_cancelled=True))
+
+    texts = [content or "" for content, _ in board]
+    assert "<@3> will play the next round" in texts[0]
+    assert "Nobody answered" in texts[1]
+    assert "<@1> did not pick a winner" in texts[2]
+
+
+def test_countdown_uses_discord_timestamps() -> None:
+    deadline = datetime(2026, 1, 1, tzinfo=UTC)
+    assert messages.closes_in(deadline, "Answers close") == (
+        f" Answers close <t:{int(deadline.timestamp())}:R>."
+    )
+    assert messages.closes_in(None, "Answers close") == ""
