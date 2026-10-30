@@ -22,8 +22,8 @@ from discord_against_humanity.domain.errors import (
     WrongPhaseError,
 )
 
-HAND_SIZE = 7
-MIN_PLAYERS = 2
+HAND_SIZE = 10
+MIN_PLAYERS = 3
 MIN_POINTS = 1
 MAX_POINTS = 50
 DEFAULT_POINTS = 5
@@ -46,8 +46,8 @@ class Player:
 @dataclass(slots=True)
 class Round:
     black_card: BlackCard
-    tsar_id: int
-    # Players expected to answer: everyone but the tsar, as of round start.
+    czar_id: int
+    # Players expected to answer: everyone but the czar, as of round start.
     participants: list[int]
     answers: dict[int, list[WhiteCard]] = field(default_factory=dict)
     # Shuffled answer owners, filled once every participant has answered.
@@ -83,7 +83,9 @@ class Game:
     points_to_win: int = DEFAULT_POINTS
     started: bool = False
     round: Round | None = None
-    next_tsar_id: int | None = None
+    next_czar_id: int | None = None
+    # House rule from the original bot: the round winner judges next.
+    winner_becomes_czar: bool = False
     used_black_cards: set[str] = field(default_factory=set)
     discarded_white_cards: set[str] = field(default_factory=set)
 
@@ -109,12 +111,19 @@ class Game:
         return sorted(self.players.values(), key=lambda p: p.score, reverse=True)
 
     def cards_needed(self) -> dict[int, int]:
-        """Number of white cards each player must draw to fill their hand."""
-        return {
-            uid: HAND_SIZE - len(p.hand)
-            for uid, p in self.players.items()
-            if len(p.hand) < HAND_SIZE
-        }
+        """Number of white cards each player must draw before answering.
+
+        Everyone fills their hand up to ``HAND_SIZE``; on "Draw 2, Pick 3"
+        cards, the players who answer draw the extra cards on top.
+        """
+        extra = self.round.black_card.draw if self.round is not None else 0
+        needed: dict[int, int] = {}
+        for uid, player in self.players.items():
+            bonus = extra if self.round is not None and uid in self.round.participants else 0
+            count = max(HAND_SIZE - len(player.hand), 0) + bonus
+            if count:
+                needed[uid] = count
+        return needed
 
     def white_cards_in_use(self) -> set[str]:
         """IDs of white cards that must not be dealt again."""
@@ -143,9 +152,10 @@ class Game:
 
     def remove_player(self, user_id: int, rng: Random) -> Departure:
         player = self.player(user_id)
+        order = list(self.players)
         del self.players[user_id]
-        if self.next_tsar_id == user_id:
-            self.next_tsar_id = None
+        if self.next_czar_id == user_id:
+            self.next_czar_id = self._successor(user_id, order)
 
         if self.started and len(self.players) < MIN_PLAYERS:
             self.stop()
@@ -161,12 +171,12 @@ class Game:
         if user_id in round_.proposals:
             round_.proposals.remove(user_id)
 
-        if user_id == round_.tsar_id or not round_.participants:
+        if user_id == round_.czar_id or not round_.participants:
             self._cancel_round()
             return Departure(player, round_cancelled=True)
         return Departure(player, judging_started=self._maybe_start_judging(rng))
 
-    def start(self, points: int) -> None:
+    def start(self, points: int, *, winner_becomes_czar: bool = False) -> None:
         if self.started:
             raise GameAlreadyStartedError
         if not MIN_POINTS <= points <= MAX_POINTS:
@@ -175,6 +185,7 @@ class Game:
             raise NotEnoughPlayersError(MIN_PLAYERS)
         self.started = True
         self.points_to_win = points
+        self.winner_becomes_czar = winner_becomes_czar
         for player in self.players.values():
             player.score = 0
 
@@ -195,15 +206,17 @@ class Game:
             raise GameNotStartedError
         if self.round is not None:
             raise WrongPhaseError("A round is already in progress.")
-        tsar_id = self.next_tsar_id
-        if tsar_id not in self.players:
-            tsar_id = rng.choice(list(self.players))
-        self.next_tsar_id = tsar_id
+        if not black_card.playable:
+            raise ValueError(f"Black card {black_card.id} asks for {black_card.pick} cards")
+        czar_id = self.next_czar_id
+        if czar_id not in self.players:
+            czar_id = rng.choice(list(self.players))
+        self.next_czar_id = czar_id
         self.used_black_cards.add(black_card.id)
         self.round = Round(
             black_card=black_card,
-            tsar_id=tsar_id,
-            participants=[uid for uid in self.players if uid != tsar_id],
+            czar_id=czar_id,
+            participants=[uid for uid in self.players if uid != czar_id],
         )
         return self.round
 
@@ -220,8 +233,8 @@ class Game:
         """
         player = self.player(user_id)
         round_ = self._round_in(Phase.ANSWERING)
-        if user_id == round_.tsar_id:
-            raise WrongPhaseError("The tsar does not answer, they judge!")
+        if user_id == round_.czar_id:
+            raise WrongPhaseError("The Card Czar does not answer, they judge!")
         if user_id not in round_.participants:
             raise WrongPhaseError("You joined during this round, wait for the next one.")
         if user_id in round_.answers:
@@ -243,8 +256,8 @@ class Game:
     def pick_winner(self, user_id: int, choice: int) -> RoundResult:
         self.player(user_id)
         round_ = self._round_in(Phase.JUDGING)
-        if user_id != round_.tsar_id:
-            raise WrongPhaseError("Only the tsar can pick the winner.")
+        if user_id != round_.czar_id:
+            raise WrongPhaseError("Only the Card Czar can pick the winner.")
         if not 1 <= choice <= len(round_.proposals):
             raise InvalidChoiceError(
                 f"Answer number must be between 1 and {len(round_.proposals)}."
@@ -255,8 +268,12 @@ class Game:
         winner.score += 1
         for cards in round_.answers.values():
             self.discarded_white_cards.update(card.id for card in cards)
-        # House rule kept from the original bot: the winner judges next.
-        self.next_tsar_id = winner_id
+        # Official rules: the Card Czar role passes to the next player.
+        self.next_czar_id = (
+            winner_id
+            if self.winner_becomes_czar
+            else self._successor(round_.czar_id, list(self.players))
+        )
         self.round = None
 
         game_over = winner.score >= self.points_to_win
@@ -282,6 +299,17 @@ class Game:
             }
             raise WrongPhaseError(expected.get(phase, "Wrong phase."))
         return self.round
+
+    def _successor(self, user_id: int, order: Sequence[int]) -> int | None:
+        """The player after *user_id* in join order, skipping those who left."""
+        if user_id not in order:
+            return None
+        start = order.index(user_id)
+        for offset in range(1, len(order)):
+            candidate = order[(start + offset) % len(order)]
+            if candidate in self.players:
+                return candidate
+        return None
 
     def _maybe_start_judging(self, rng: Random) -> bool:
         round_ = self.round

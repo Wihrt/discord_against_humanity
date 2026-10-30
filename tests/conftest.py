@@ -41,7 +41,7 @@ class RecordingNotifier:
 
     async def round_started(self, game: Game) -> None:
         assert game.round is not None
-        self.events.append(("round_started", game.round.tsar_id))
+        self.events.append(("round_started", game.round.czar_id))
 
     async def answer_received(self, game: Game, user_id: int) -> None:
         self.events.append(("answer_received", user_id))

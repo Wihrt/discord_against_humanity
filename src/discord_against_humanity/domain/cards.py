@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 _BLANK = re.compile(r"_+")
 
+# Some fan-made cards ask for 4 or 10 answers, which no hand can support.
+MAX_PICK = 3
+
 
 @dataclass(frozen=True, slots=True)
 class WhiteCard:
@@ -22,6 +25,15 @@ class BlackCard:
     id: str
     text: str
     pick: int = 1
+
+    @property
+    def playable(self) -> bool:
+        return 1 <= self.pick <= MAX_PICK
+
+    @property
+    def draw(self) -> int:
+        """Extra cards dealt before answering: "Draw 2, Pick 3" in the rules."""
+        return self.pick - 1 if self.pick >= 3 else 0
 
     def fill(self, answers: Sequence[str]) -> str:
         """Return the card text with each blank replaced by an answer.

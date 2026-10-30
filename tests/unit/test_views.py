@@ -172,7 +172,7 @@ async def test_buttons_from_a_previous_round_are_refused(service: GameService) -
     assert "round is over" in (interaction.errors()[0] or "")
 
 
-async def test_tsar_selects_then_crowns(service: GameService) -> None:
+async def test_czar_selects_then_crowns(service: GameService) -> None:
     game = await started(service)
     assert game.round is not None
     for uid in game.round.participants:
@@ -180,7 +180,7 @@ async def test_tsar_selects_then_crowns(service: GameService) -> None:
     game = await service.get(GUILD)
     assert game.round is not None
     assert game.phase is Phase.JUDGING
-    tsar = game.round.tsar_id
+    czar = game.round.czar_id
     expected_winner = game.round.proposals[1]
 
     view = views.judge_view(game.round)
@@ -188,10 +188,10 @@ async def test_tsar_selects_then_crowns(service: GameService) -> None:
 
     # A player cannot judge.
     refused = await click(service, game.round.participants[0], button(view, "2"))
-    assert "Only the tsar" in (refused.errors()[0] or "")
+    assert "Only the Card Czar" in (refused.errors()[0] or "")
 
-    view = (await click(service, tsar, button(view, "2"))).response.edits[-1]["view"]
-    crowned = await click(service, tsar, button(view, "Crown this answer"))
+    view = (await click(service, czar, button(view, "2"))).response.edits[-1]["view"]
+    crowned = await click(service, czar, button(view, "Crown this answer"))
     assert crowned.errors() == []
 
     game = await service.get(GUILD)

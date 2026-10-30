@@ -173,15 +173,19 @@ class CardsAgainstHumanity(commands.Cog):
         await interaction.followup.send("You left the game.", ephemeral=True)
 
     @app_commands.command(name="start", description="Start the game")
-    @app_commands.describe(points=f"Points needed to win (default {DEFAULT_POINTS})")
+    @app_commands.describe(
+        points=f"Points needed to win (default {DEFAULT_POINTS})",
+        winner_czar="House rule: the round winner becomes the next Card Czar",
+    )
     async def start(
         self,
         interaction: discord.Interaction,
         points: app_commands.Range[int, MIN_POINTS, MAX_POINTS] = DEFAULT_POINTS,
+        winner_czar: bool = False,
     ) -> None:
         guild = _guild(interaction)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        game = await self.service.start(guild.id, points)
+        game = await self.service.start(guild.id, points, winner_becomes_czar=winner_czar)
         await interaction.followup.send(
             f"Game started, head to {messages.channel_mention(game.board_id)}!",
             ephemeral=True,
@@ -203,9 +207,9 @@ class CardsAgainstHumanity(commands.Cog):
         await self.service.submit_answers(guild.id, interaction.user.id, choices)
         await interaction.followup.send("Answer recorded!", ephemeral=True)
 
-    @app_commands.command(name="tsar", description="Pick the winning answer (tsar only)")
+    @app_commands.command(name="czar", description="Pick the winning answer (Card Czar only)")
     @app_commands.describe(answer="Number of the winning answer")
-    async def tsar(
+    async def czar(
         self, interaction: discord.Interaction, answer: app_commands.Range[int, 1]
     ) -> None:
         guild = _guild(interaction)

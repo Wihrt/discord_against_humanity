@@ -21,7 +21,7 @@ class TestSerialization:
         assert game_from_dict(json.loads(json.dumps(game_to_dict(game)))) == game
 
     def test_round_trip_mid_round(self) -> None:
-        game = started_game(players=4, tsar=2)
+        game = started_game(players=4, czar=2)
         game.discarded_white_cards.add("x")
         everyone_answers(game, Random(0))
         restored = game_from_dict(json.loads(json.dumps(game_to_dict(game))))
@@ -69,6 +69,13 @@ class TestCahJson:
         black, white = parse_cards({"blackCards": [{"text": "_.", "pick": 1}], "whiteCards": ["A"]})
         assert len(black) == 1
         assert len(white) == 1
+
+    def test_unplayable_black_cards_are_dropped(self) -> None:
+        data = {
+            "blackCards": [{"text": "_.", "pick": 1}, {"text": "List ten.", "pick": 10}],
+            "whiteCards": ["A"],
+        }
+        assert [c.pick for c in parse_cards(data)[0]] == [1]
 
     def test_ids_are_stable(self) -> None:
         assert parse_cards(self.COMPACT) == parse_cards(self.COMPACT)

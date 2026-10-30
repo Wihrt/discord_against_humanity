@@ -11,6 +11,7 @@ from discord_against_humanity.application.ports import (
     GameNotifier,
     GameRepository,
 )
+from discord_against_humanity.domain.cards import BlackCard
 from discord_against_humanity.domain.errors import (
     DeckExhaustedError,
     GameAlreadyExistsError,
@@ -94,10 +95,10 @@ class GameService:
             await self._notifier.judging_started(game)
         return departure.player
 
-    async def start(self, guild_id: int, points: int) -> Game:
+    async def start(self, guild_id: int, points: int, *, winner_becomes_czar: bool = False) -> Game:
         async with self._locks[guild_id]:
             game = await self.get(guild_id)
-            game.start(points)
+            game.start(points, winner_becomes_czar=winner_becomes_czar)
             await self._next_round(game)
             await self._games.save(game)
         await self._notifier.game_started(game)
@@ -140,11 +141,21 @@ class GameService:
     # -------------------------------------------------------------------------
 
     async def _next_round(self, game: Game) -> None:
-        black_card = await self._deck.draw_black_card(game.used_black_cards)
+        game.begin_round(await self._draw_playable_black_card(game), self._rng)
+        # Dealt once the round is open: "Draw 2, Pick 3" cards only give
+        # extra cards to the players who answer.
         for user_id, count in game.cards_needed().items():
             cards = await self._deck.draw_white_cards(count, game.white_cards_in_use())
             game.deal(user_id, cards)
-        game.begin_round(black_card, self._rng)
+
+    async def _draw_playable_black_card(self, game: Game) -> BlackCard:
+        # Catalogs seeded by older versions may hold cards asking for more
+        # answers than a hand can give: skip them.
+        exclude = set(game.used_black_cards)
+        while not (card := await self._deck.draw_black_card(exclude)).playable:
+            logger.warning("Skipping unplayable black card %s (pick %d)", card.id, card.pick)
+            exclude.add(card.id)
+        return card
 
     async def _try_next_round(self, game: Game) -> bool:
         """Start the next round, or stop the game if the deck is exhausted."""

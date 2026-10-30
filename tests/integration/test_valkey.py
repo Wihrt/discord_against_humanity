@@ -105,7 +105,7 @@ async def test_full_game_on_valkey(client: Valkey, store: ValkeyCardStore) -> No
     for uid in game.round.participants:
         await service.submit_answers(GUILD, uid, [1])
     assert (await service.get(GUILD)).phase is Phase.JUDGING
-    await service.pick_winner(GUILD, game.round.tsar_id, 1)
+    await service.pick_winner(GUILD, game.round.czar_id, 1)
 
     game = await service.get(GUILD)
     assert not game.started

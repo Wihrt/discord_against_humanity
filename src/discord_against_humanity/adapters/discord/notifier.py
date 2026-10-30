@@ -6,9 +6,20 @@ from typing import Any
 import discord
 
 from discord_against_humanity.adapters.discord import messages, views
+from discord_against_humanity.domain.cards import BlackCard
 from discord_against_humanity.domain.game import Game, RoundResult
 
 logger = logging.getLogger(__name__)
+
+
+def _answer_instructions(card: BlackCard) -> str:
+    text = (
+        f"Click {card.pick} card(s), in order: the first one fills the first blank. "
+        "Then press **Play**."
+    )
+    if card.draw:
+        text = f"**Draw {card.draw}, pick {card.pick}!** You got {card.draw} extra cards. " + text
+    return text
 
 
 class DiscordNotifier:
@@ -55,22 +66,21 @@ class DiscordNotifier:
         question = messages.question_embed(round_)
         await self._send(
             game.board_id,
-            f"{messages.mention(round_.tsar_id)} is the tsar for this round.",
+            f"{messages.mention(round_.czar_id)} is the Card Czar for this round.",
             embed=question,
         )
         for player in game.players.values():
-            if player.user_id == round_.tsar_id:
+            if player.user_id == round_.czar_id:
                 await self._send(
                     player.channel_id,
-                    "You are the **tsar** this round: wait for the answers, "
+                    "You are the **Card Czar** this round: wait for the answers, "
                     "then pick the best one.",
                     embed=question,
                 )
             elif player.user_id in round_.participants:
                 await self._send(
                     player.channel_id,
-                    f"Click {round_.black_card.pick} card(s), in order: the first one "
-                    "fills the first blank. Then press **Play**.",
+                    _answer_instructions(round_.black_card),
                     embeds=messages.play_embeds(round_, player.hand, []),
                     view=views.hand_view(round_, player.hand, []),
                 )
@@ -91,14 +101,14 @@ class DiscordNotifier:
     async def judging_started(self, game: Game) -> None:
         assert game.round is not None
         proposals = messages.proposals_embed(game)
-        tsar = game.players[game.round.tsar_id]
+        czar = game.players[game.round.czar_id]
         await self._send(
             game.board_id,
-            f"All answers are in! {messages.mention(tsar.user_id)}, pick the winner.",
+            f"All answers are in! {messages.mention(czar.user_id)}, pick the winner.",
             embed=proposals,
         )
         await self._send(
-            tsar.channel_id,
+            czar.channel_id,
             "Select the winning answer, then press **Crown this answer**.",
             embed=proposals,
             view=views.judge_view(game.round),

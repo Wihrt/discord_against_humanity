@@ -78,6 +78,6 @@ def parse_cards(
     else:
         raw_black, raw_white = data["black"], data["white"]
 
-    black = {card.id: card for card in map(_black, raw_black) if card.text}
+    black = {card.id: card for card in map(_black, raw_black) if card.text and card.playable}
     white = {card.id: card for card in map(_white, raw_white) if card.text}
     return list(black.values()), list(white.values())
