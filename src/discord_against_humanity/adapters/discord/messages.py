@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import discord
 
 from discord_against_humanity.domain.cards import BlackCard, WhiteCard
-from discord_against_humanity.domain.game import Game, RoundResult
+from discord_against_humanity.domain.game import Game, Round, RoundResult
 
 _BLACK = discord.Colour.dark_theme()
 _WHITE = discord.Colour.light_grey()
@@ -28,23 +28,29 @@ def answer_text(card: BlackCard, answers: Sequence[WhiteCard]) -> str:
     return card.fill([f"**{answer.text.rstrip('.')}**" for answer in answers])
 
 
+def draft_text(card: BlackCard, answers: Sequence[WhiteCard]) -> str:
+    """Like :func:`answer_text`, showing the blanks that are still empty."""
+    missing = max(card.pick - len(answers), 0)
+    return card.fill([f"**{a.text.rstrip('.')}**" for a in answers] + [r"\_\_\_"] * missing)
+
+
 def rules_embed() -> discord.Embed:
     embed = discord.Embed(title="How to play", colour=_BLACK)
     embed.description = (
         "1. Each round, a **tsar** is chosen and a black card is drawn.\n"
-        "2. Everyone else picks white cards from their hand with `/vote` "
-        "in their private channel, e.g. `/vote answers:3` or `/vote answers:2 5`.\n"
-        "3. Once all answers are in, the tsar picks the funniest one with `/tsar`.\n"
+        "2. Everyone else clicks white cards from their hand, in their private "
+        "channel. The first card clicked fills the first blank.\n"
+        "3. Once all answers are in, the tsar picks the funniest one.\n"
         "4. The winner scores a point and becomes the next tsar.\n"
         "5. The first player to reach the target score wins.\n\n"
-        "`/hand` shows your cards, `/score` the scoreboard."
+        "`/hand` shows your cards, `/score` the scoreboard. "
+        "`/vote` and `/tsar` work too, e.g. `/vote answers:2 5`."
     )
     return embed
 
 
-def question_embed(game: Game) -> discord.Embed:
-    assert game.round is not None
-    card = game.round.black_card
+def question_embed(round_: Round) -> discord.Embed:
+    card = round_.black_card
     return discord.Embed(
         title=f"Question — pick {card.pick}",
         description=question_text(card),
@@ -61,13 +67,28 @@ def hand_embed(cards: Sequence[WhiteCard]) -> discord.Embed:
     )
 
 
-def proposals_embed(game: Game) -> discord.Embed:
+def play_embeds(
+    round_: Round, hand: Sequence[WhiteCard], picked: Sequence[WhiteCard]
+) -> list[discord.Embed]:
+    """The question, the player's hand and their answer in progress."""
+    embed = hand_embed(hand)
+    embed.add_field(name="Your answer", value=draft_text(round_.black_card, picked), inline=False)
+    return [question_embed(round_), embed]
+
+
+def played_embed(card: BlackCard, played: Sequence[WhiteCard]) -> discord.Embed:
+    return discord.Embed(
+        title="Answer played", description=answer_text(card, played), colour=_WHITE
+    ).set_footer(text="Waiting for the other players…")
+
+
+def proposals_embed(game: Game, selected: int | None = None) -> discord.Embed:
     assert game.round is not None
     card = game.round.black_card
-    lines = [
-        f"`{index}.` {answer_text(card, cards)}"
-        for index, (_owner, cards) in enumerate(game.proposals(), start=1)
-    ]
+    lines = []
+    for index, (_owner, cards) in enumerate(game.proposals(), start=1):
+        marker = ":point_right: " if index == selected else ""
+        lines.append(f"{marker}`{index}.` {answer_text(card, cards)}")
     return discord.Embed(title="Answers", description="\n".join(lines), colour=_WHITE)
 
 

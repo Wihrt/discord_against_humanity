@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from discord_against_humanity.adapters.discord.cog import CardsAgainstHumanity
 from discord_against_humanity.adapters.discord.notifier import DiscordNotifier
+from discord_against_humanity.adapters.discord.views import DYNAMIC_ITEMS
 from discord_against_humanity.application.ports import GameNotifier
 from discord_against_humanity.application.service import GameService
 from discord_against_humanity.domain.errors import DomainError
@@ -64,6 +65,8 @@ class CardsBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.add_cog(CardsAgainstHumanity(self.service))
+        # Buttons are routed by custom ID, so they survive restarts.
+        self.add_dynamic_items(*DYNAMIC_ITEMS)
         synced = await self.tree.sync()
         logger.info("Synced %d slash commands", len(synced))
 
