@@ -1,1 +1,1 @@
-"""Adapters — Discord commands and checks (input adapters)."""
+"""Adapters: concrete implementations of the application ports."""

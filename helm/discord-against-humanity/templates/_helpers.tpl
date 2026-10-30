@@ -60,3 +60,38 @@ Name of the secret holding the Discord token.
 {{- include "discord-against-humanity.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Container image, defaulting the tag to the chart appVersion.
+*/}}
+{{- define "discord-against-humanity.image" -}}
+{{- $tag := default .Chart.AppVersion .Values.image.tag }}
+{{- if .Values.image.digest }}
+{{- printf "%s:%s@%s" .Values.image.repository $tag .Values.image.digest }}
+{{- else }}
+{{- printf "%s:%s" .Values.image.repository $tag }}
+{{- end }}
+{{- end }}
+
+{{/*
+Environment shared by the bot and the seed job.
+*/}}
+{{- define "discord-against-humanity.valkeyEnv" -}}
+- name: VALKEY_HOST
+  value: {{ required "valkey.host is required" .Values.valkey.host | quote }}
+- name: VALKEY_PORT
+  value: {{ .Values.valkey.port | quote }}
+- name: VALKEY_DB
+  value: {{ .Values.valkey.db | quote }}
+{{- with .Values.valkey.passwordSecret }}
+{{- if .name }}
+- name: VALKEY_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .name }}
+      key: {{ .key }}
+{{- end }}
+{{- end }}
+- name: LOG_LEVEL
+  value: {{ .Values.logLevel | quote }}
+{{- end }}

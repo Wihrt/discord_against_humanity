@@ -1,6 +1,5 @@
-"""Entry point for the Discord Against Humanity bot."""
+import sys
 
-from discord_against_humanity.bot import main
+from discord_against_humanity.main import main
 
-if __name__ == "__main__":
-    main()
+sys.exit(main())

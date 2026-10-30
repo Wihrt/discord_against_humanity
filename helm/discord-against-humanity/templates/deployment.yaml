@@ -5,47 +5,61 @@ metadata:
   labels:
     {{- include "discord-against-humanity.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  # A Discord bot token must be used by exactly one process.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "discord-against-humanity.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        {{- if not .Values.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "discord-against-humanity.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "discord-against-humanity.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        - name: bot
+          image: {{ include "discord-against-humanity.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["run"]
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
+            {{- toYaml .Values.securityContext | nindent 12 }}
           env:
             - name: DISCORD_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "discord-against-humanity.secretName" . }}
                   key: DISCORD_TOKEN
-            - name: VALKEY_HOST
-              value: {{ .Values.valkey.host | quote }}
-            - name: VALKEY_PORT
-              value: {{ .Values.valkey.port | quote }}
+            {{- include "discord-against-humanity.valkeyEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

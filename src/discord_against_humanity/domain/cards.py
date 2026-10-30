@@ -1,109 +1,38 @@
-"""Card document classes for Cards Against Humanity."""
+"""Card value objects."""
 
-import logging
-from typing import Self
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 
-from html2text import html2text
-
-from discord_against_humanity.domain.document import Document
-from discord_against_humanity.ports.repository import RepositoryFactory
-
-logger = logging.getLogger(__name__)
-
-_DEFAULT_PICK = 1
+_BLANK = re.compile(r"_+")
 
 
-class BlackCard(Document):
-    """Data class for a Black Card (question) document."""
+@dataclass(frozen=True, slots=True)
+class WhiteCard:
+    """An answer card."""
 
-    _COLLECTION = "black_cards"
+    id: str
+    text: str
 
-    @property
-    def text(self) -> str | None:
-        """Get the formatted card text.
 
-        Returns:
-            The card text with blanks formatted for display, or None.
+@dataclass(frozen=True, slots=True)
+class BlackCard:
+    """A question card, with one or more blanks to fill."""
+
+    id: str
+    text: str
+    pick: int = 1
+
+    def fill(self, answers: Sequence[str]) -> str:
+        """Return the card text with each blank replaced by an answer.
+
+        Answers that have no matching blank (question-style cards) are
+        appended at the end of the text.
         """
-        try:
-            pick = self.pick or _DEFAULT_PICK
-            if "_" not in self._document["text"]:
-                return html2text(
-                    self._document["text"] + "**{}**. " * pick
-                )
-            return html2text(self._document["text"].replace("_", "**{}**"))
-        except KeyError:
-            return None
+        remaining = list(answers)
 
-    @property
-    def pick(self) -> int:
-        """Get the number of cards to pick.
+        def substitute(_match: re.Match[str]) -> str:
+            return remaining.pop(0) if remaining else _match.group(0)
 
-        Returns:
-            The number of white cards a player must pick (defaults to 1).
-        """
-        return self._document.get("pick", _DEFAULT_PICK)
-
-    @classmethod
-    async def create(
-        cls,
-        repo_factory: RepositoryFactory,
-        document_id: str | None = None,
-    ) -> Self:
-        """Create a new BlackCard instance.
-
-        Args:
-            repo_factory: Factory to create repositories.
-            document_id: Optional ID of the document to load.
-
-        Returns:
-            A new BlackCard instance.
-        """
-        self = BlackCard(
-            repository=repo_factory("black_cards"),
-            repo_factory=repo_factory,
-        )
-        if document_id:
-            await self.get(document_id)
-        return self
-
-
-class WhiteCard(Document):
-    """Data class for a White Card (answer) document."""
-
-    _COLLECTION = "white_cards"
-
-    @property
-    def text(self) -> str | None:
-        """Get the card text.
-
-        Returns:
-            The card text converted from HTML, or None.
-        """
-        try:
-            return html2text(self._document["text"]).rstrip()
-        except KeyError:
-            return None
-
-    @classmethod
-    async def create(
-        cls,
-        repo_factory: RepositoryFactory,
-        document_id: str | None = None,
-    ) -> Self:
-        """Create a new WhiteCard instance.
-
-        Args:
-            repo_factory: Factory to create repositories.
-            document_id: Optional ID of the document to load.
-
-        Returns:
-            A new WhiteCard instance.
-        """
-        self = WhiteCard(
-            repository=repo_factory("white_cards"),
-            repo_factory=repo_factory,
-        )
-        if document_id:
-            await self.get(document_id)
-        return self
+        filled = _BLANK.sub(substitute, self.text)
+        return " ".join([filled, *remaining])

@@ -1,6 +1,9 @@
 apiVersion: v2
 name: discord-against-humanity
-description: A Helm chart for Discord Against Humanity bot
+description: Cards Against Humanity on Discord, compliant with the restricted Pod Security Standard
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://github.com/Wihrt/discord_against_humanity
+sources:
+  - https://github.com/Wihrt/discord_against_humanity

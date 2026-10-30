@@ -1,601 +1,304 @@
-"""Game state and logic for Cards Against Humanity."""
+"""Game aggregate: players, rounds and the rules that tie them together.
 
-import logging
-from asyncio import sleep
-from random import sample, shuffle
-from typing import Any, Self
+This module is pure Python: it performs no I/O and knows nothing about
+Discord or the storage backend.  Identifiers (guild, channel, user) are
+plain integers handed over by the adapters.
+"""
 
-from discord import CategoryChannel, Guild, TextChannel
-from discord.ext.commands import Bot
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from enum import StrEnum
+from random import Random
 
-from discord_against_humanity.domain.cards import BlackCard
-from discord_against_humanity.domain.document import Document
-from discord_against_humanity.domain.player import Player
-from discord_against_humanity.ports.repository import RepositoryFactory
-from discord_against_humanity.utils.debug import async_log_event
-from discord_against_humanity.utils.embed import create_embed
+from discord_against_humanity.domain.cards import BlackCard, WhiteCard
+from discord_against_humanity.domain.errors import (
+    AlreadyPlayerError,
+    GameAlreadyStartedError,
+    GameNotStartedError,
+    InvalidChoiceError,
+    InvalidPointsError,
+    NotAPlayerError,
+    NotEnoughPlayersError,
+    WrongPhaseError,
+)
 
-logger = logging.getLogger(__name__)
+HAND_SIZE = 7
+MIN_PLAYERS = 2
+MIN_POINTS = 1
+MAX_POINTS = 50
+DEFAULT_POINTS = 5
 
-_MAX_DRAW_ATTEMPTS = 200
-_POLL_INTERVAL = 5
+
+class Phase(StrEnum):
+    LOBBY = "lobby"
+    ANSWERING = "answering"
+    JUDGING = "judging"
 
 
-class Game(Document):
-    """Document class for a Cards Against Humanity game."""
+@dataclass(slots=True)
+class Player:
+    user_id: int
+    channel_id: int
+    score: int = 0
+    hand: list[WhiteCard] = field(default_factory=list)
 
-    _COLLECTION = "games"
 
-    # Properties
+@dataclass(slots=True)
+class Round:
+    black_card: BlackCard
+    tsar_id: int
+    # Players expected to answer: everyone but the tsar, as of round start.
+    participants: list[int]
+    answers: dict[int, list[WhiteCard]] = field(default_factory=dict)
+    # Shuffled answer owners, filled once every participant has answered.
+    proposals: list[int] = field(default_factory=list)
+
+    @property
+    def judging(self) -> bool:
+        return bool(self.proposals)
+
+
+@dataclass(frozen=True, slots=True)
+class RoundResult:
+    winner_id: int
+    black_card: BlackCard
+    answers: tuple[WhiteCard, ...]
+    game_over: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Departure:
+    player: Player
+    round_cancelled: bool = False
+    judging_started: bool = False
+    game_stopped: bool = False
+
+
+@dataclass(slots=True)
+class Game:
+    guild_id: int
+    category_id: int
+    board_id: int
+    players: dict[int, Player] = field(default_factory=dict)
+    points_to_win: int = DEFAULT_POINTS
+    started: bool = False
+    round: Round | None = None
+    next_tsar_id: int | None = None
+    used_black_cards: set[str] = field(default_factory=set)
+    discarded_white_cards: set[str] = field(default_factory=set)
+
+    # Queries
     # -------------------------------------------------------------------------
 
     @property
-    def guild(self) -> Guild | None:
-        """Get the guild this game belongs to.
+    def phase(self) -> Phase:
+        if self.round is None:
+            return Phase.LOBBY
+        return Phase.JUDGING if self.round.judging else Phase.ANSWERING
 
-        Returns:
-            The Discord guild, or None.
-        """
+    def has_player(self, user_id: int) -> bool:
+        return user_id in self.players
+
+    def player(self, user_id: int) -> Player:
         try:
-            return self._bot.get_guild(self._document["guild"])
+            return self.players[user_id]
         except KeyError:
-            return None
+            raise NotAPlayerError from None
 
-    @guild.setter
-    def guild(self, value: Guild) -> None:
-        """Set the guild for this game.
+    def scoreboard(self) -> list[Player]:
+        return sorted(self.players.values(), key=lambda p: p.score, reverse=True)
 
-        Args:
-            value: The Discord guild.
+    def cards_needed(self) -> dict[int, int]:
+        """Number of white cards each player must draw to fill their hand."""
+        return {
+            uid: HAND_SIZE - len(p.hand)
+            for uid, p in self.players.items()
+            if len(p.hand) < HAND_SIZE
+        }
 
-        Raises:
-            TypeError: If value is not a Guild.
-        """
-        if not isinstance(value, Guild):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["guild"] = value.id
+    def white_cards_in_use(self) -> set[str]:
+        """IDs of white cards that must not be dealt again."""
+        in_use = set(self.discarded_white_cards)
+        for player in self.players.values():
+            in_use.update(card.id for card in player.hand)
+        if self.round is not None:
+            for cards in self.round.answers.values():
+                in_use.update(card.id for card in cards)
+        return in_use
 
-    @property
-    def category(self) -> CategoryChannel | None:
-        """Get the category channel for this game.
+    def proposals(self) -> list[tuple[int, list[WhiteCard]]]:
+        """Answers in reveal order, as ``(owner_id, cards)`` pairs."""
+        round_ = self._round_in(Phase.JUDGING)
+        return [(uid, round_.answers[uid]) for uid in round_.proposals]
 
-        Returns:
-            The category channel, or None.
-        """
-        try:
-            guild = self.guild
-            if guild is None:
-                return None
-            return guild.get_channel(self._document["category"])  # type: ignore[return-value]
-        except (AttributeError, KeyError):
-            return None
-
-    @category.setter
-    def category(self, value: CategoryChannel) -> None:
-        """Set the category channel for this game.
-
-        Args:
-            value: The category channel.
-
-        Raises:
-            TypeError: If value is not a CategoryChannel.
-        """
-        if not isinstance(value, CategoryChannel):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["category"] = value.id
-
-    @property
-    def board(self) -> TextChannel | None:
-        """Get the board text channel for this game.
-
-        Returns:
-            The board channel, or None.
-        """
-        try:
-            guild = self.guild
-            if guild is None:
-                return None
-            return guild.get_channel(self._document["board"])  # type: ignore[return-value]
-        except (AttributeError, KeyError):
-            return None
-
-    @board.setter
-    def board(self, value: TextChannel) -> None:
-        """Set the board text channel for this game.
-
-        Args:
-            value: The board channel.
-
-        Raises:
-            TypeError: If value is not a TextChannel.
-        """
-        if not isinstance(value, TextChannel):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["board"] = value.id
-
-    @property
-    def points(self) -> int | None:
-        """Get the maximum number of points to win.
-
-        Returns:
-            The point threshold, or None.
-        """
-        try:
-            return self._document["points"]
-        except KeyError:
-            return None
-
-    @points.setter
-    def points(self, value: int) -> None:
-        """Set the maximum number of points to win.
-
-        Args:
-            value: The point threshold.
-
-        Raises:
-            TypeError: If value is not an int.
-        """
-        if not isinstance(value, int):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["points"] = value
-
-    @property
-    def playing(self) -> bool | None:
-        """Get the game's playing status.
-
-        Returns:
-            Whether the game is in progress, or None.
-        """
-        try:
-            return self._document["playing"]
-        except KeyError:
-            return None
-
-    @playing.setter
-    def playing(self, value: bool) -> None:
-        """Set the game's playing status.
-
-        Args:
-            value: Whether the game is in progress.
-
-        Raises:
-            TypeError: If value is not a bool.
-        """
-        if not isinstance(value, bool):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        self._document["playing"] = value
-
-    @property
-    def voting(self) -> str | None:
-        """Get the current voting status.
-
-        Returns:
-            Who is currently voting ('players', 'tsar', or 'nobody'), or None.
-        """
-        try:
-            return self._document["voting"]
-        except KeyError:
-            return None
-
-    @voting.setter
-    def voting(self, value: str) -> None:
-        """Set the current voting status.
-
-        Args:
-            value: Who should vote ('players', 'tsar', or 'nobody').
-
-        Raises:
-            TypeError: If value is not a str.
-            ValueError: If value is not a valid voting status.
-        """
-        if not isinstance(value, str):
-            raise TypeError(f"Wrong type for value: {type(value)}")
-        if value not in ("players", "tsar", "nobody"):
-            raise ValueError("Wrong value for voting")
-        self._document["voting"] = value
-
-    @property
-    def players_id(self) -> list[Any] | None:
-        """Get the list of player IDs.
-
-        Returns:
-            List of player IDs, or None.
-        """
-        try:
-            return self._document["players"]
-        except KeyError:
-            return None
-
-    @property
-    def black_cards_id(self) -> list[Any] | None:
-        """Get the list of used Black Card IDs.
-
-        Returns:
-            List of used black card IDs, or None.
-        """
-        try:
-            return self._document["black_cards"]
-        except KeyError:
-            return None
-
-    @property
-    def white_cards_id(self) -> list[Any] | None:
-        """Get the list of used White Card IDs.
-
-        Returns:
-            List of used white card IDs, or None.
-        """
-        try:
-            return self._document["white_cards"]
-        except KeyError:
-            return None
-
-    @property
-    def tsar_id(self) -> Any | None:
-        """Get the current Tsar's ID.
-
-        Returns:
-            The tsar's ID, or None.
-        """
-        try:
-            return self._document["tsar"]
-        except KeyError:
-            return None
-
-    # Class methods
+    # Lobby
     # -------------------------------------------------------------------------
 
-    @classmethod
-    async def create(
-        cls,
-        discord_bot: Bot,
-        repo_factory: RepositoryFactory,
-        guild: Guild,
-    ) -> Self:
-        """Create a new Game instance.
-
-        Args:
-            discord_bot: The Discord bot instance.
-            repo_factory: Factory to create repositories.
-            guild: The Discord guild for this game.
-
-        Returns:
-            A new Game instance.
-        """
-        self = Game(
-            repository=repo_factory("games"),
-            repo_factory=repo_factory,
-        )
-        self._bot = discord_bot
-        self._set_default_values()
-        await self._get(guild.id)
-        return self
-
-    # Private methods
-    # -------------------------------------------------------------------------
-
-    async def _get(self, guild: int) -> None:
-        """Load the game document by guild ID.
-
-        Args:
-            guild: The guild ID to search for.
-        """
-        document = await self._repo.find_one({"guild": guild})
-        if document:
-            self._document = document
-
-    def _set_default_values(self) -> None:
-        """Set default values for a new game document."""
-        self._document["guild"] = 0
-        self._document["category"] = 0
-        self._document["board"] = 0
-        self._document["players"] = []
-        self._document["black_cards"] = []
-        self._document["white_cards"] = []
-        self._document["points"] = 5
-        self._document["playing"] = False
-        self._document["voting"] = "nobody"
-        self._document["results"] = []
-        self._document["tsar"] = 0
-
-    async def _reload(self) -> None:
-        """Reload the game state from the repository."""
-        if self.document_id:
-            await self.get(self.document_id)
-
-    # Public methods
-    # -------------------------------------------------------------------------
-
-    @async_log_event
-    async def get_players(self) -> list[Player]:
-        """Get all players in this game.
-
-        Returns:
-            List of Player instances.
-        """
-        players: list[Player] = []
-        for player_id in self.players_id:  # type: ignore[union-attr]
-            player = await Player.create(
-                self._bot, self._repo_factory, player_id
-            )
-            players.append(player)
-        return players
-
-    @async_log_event
-    async def add_player(self, player: Player) -> None:
-        """Add a player to the game.
-
-        Args:
-            player: The player to add.
-
-        Raises:
-            TypeError: If player is not a Player.
-        """
-        if not isinstance(player, Player):
-            raise TypeError("Wrong type for player")
-        self._document["players"].append(player.document_id)
-        await self.save()
-
-    @async_log_event
-    async def delete_player(self, player: Player) -> None:
-        """Remove a player from the game.
-
-        Args:
-            player: The player to remove.
-
-        Raises:
-            TypeError: If player is not a Player.
-        """
-        if not isinstance(player, Player):
-            raise TypeError("Wrong type for player")
-        self._document["players"].remove(player.document_id)
-        await self.save()
-
-    @async_log_event
-    async def get_players_answers(self) -> int:
-        """Count the number of players who have answered.
-
-        Returns:
-            Number of players who have voted.
-        """
-        count = 0
-        players = await self.get_players()
-        for player in players:
-            if player.document_id != self.tsar_id:
-                if player.answers_id:
-                    count += 1
-        return count
-
-    @async_log_event
-    async def get_players_score(self) -> list[list[Any]]:
-        """Get all players and their scores.
-
-        Returns:
-            List of [player, score] pairs.
-        """
-        scores: list[list[Any]] = []
-        players = await self.get_players()
-        for player in players:
-            scores.append([player, player.score])
-        return scores
-
-    @async_log_event
-    async def is_points_max(self) -> bool:
-        """Check if any player has reached the maximum score.
-
-        Returns:
-            True if a player has reached the win threshold.
-        """
-        scores = await self.get_players_score()
-        return not all(score < self.points for _player, score in scores)
-
-    @async_log_event
-    async def score(self) -> None:
-        """Display the current scoreboard in the board channel."""
-        scores = await self.get_players_score()
-        fields: list[dict[str, Any]] = []
-        for player, score in scores:
-            fields.append(
-                {
-                    "name": player.user.display_name,
-                    "value": str(score or 0),
-                    "inline": True,
-                }
-            )
-        message = create_embed({"title": "Score", "fields": fields})
-        await self.board.send(embed=message)  # type: ignore[union-attr]
-
-    @async_log_event
-    async def get_black_card(self) -> BlackCard:
-        """Get the last drawn black card.
-
-        Returns:
-            The most recently drawn BlackCard.
-        """
-        black_card_id = self.black_cards_id[-1]  # type: ignore[index]
-        black_card = await BlackCard.create(
-            self._repo_factory, black_card_id
-        )
-        return black_card
-
-    @async_log_event
-    async def draw_black_card(self) -> Any:
-        """Draw a new black card and return its embed message.
-
-        Returns:
-            A Discord Embed with the black card question.
-
-        Raises:
-            RuntimeError: If no new card can be drawn after max attempts.
-        """
-        attempts = 0
-        card_number = len(self.black_cards_id)  # type: ignore[arg-type]
-        bc_repo = self._repo_factory("black_cards")
-        while len(self.black_cards_id) == card_number:  # type: ignore[arg-type]
-            attempts += 1
-            if attempts > _MAX_DRAW_ATTEMPTS:
-                raise RuntimeError(
-                    "Could not draw a new black card: "
-                    "deck may be exhausted"
-                )
-            document = await bc_repo.random_member()
-            if document is not None:
-                if document["_id"] not in self.black_cards_id:  # type: ignore[operator]
-                    self._document["black_cards"].append(
-                        document["_id"]
-                    )
-        await self.save()
-
-        black_card = await self.get_black_card()
-        message = create_embed(
-            {
-                "title": f"Question - Pick {black_card.pick}",
-                "description": black_card.text,
-            }
-        )
-        return message
-
-    @async_log_event
-    async def get_tsar(self) -> Player:
-        """Get the current tsar player.
-
-        Returns:
-            The tsar Player instance.
-        """
-        player = await Player.create(
-            self._bot, self._repo_factory, self.tsar_id
-        )
+    def add_player(self, user_id: int, channel_id: int) -> Player:
+        if user_id in self.players:
+            raise AlreadyPlayerError
+        player = Player(user_id=user_id, channel_id=channel_id)
+        self.players[user_id] = player
         return player
 
-    @async_log_event
-    async def set_random_tsar(self) -> None:
-        """Set a new random tsar from the player list.
+    def remove_player(self, user_id: int, rng: Random) -> Departure:
+        player = self.player(user_id)
+        del self.players[user_id]
+        if self.next_tsar_id == user_id:
+            self.next_tsar_id = None
 
-        Does nothing if there are no players.
-        """
-        if not self.players_id:
-            logger.warning("Cannot set tsar: no players in game")
-            return
-        self._document["tsar"] = sample(self.players_id, 1)[0]
-        await self.save()
+        if self.started and len(self.players) < MIN_PLAYERS:
+            self.stop()
+            return Departure(player, game_stopped=True)
 
-    @async_log_event
-    async def get_tsar_answer(self) -> bool:
-        """Check if the tsar has voted.
+        round_ = self.round
+        if round_ is None:
+            return Departure(player)
+
+        round_.answers.pop(user_id, None)
+        if user_id in round_.participants:
+            round_.participants.remove(user_id)
+        if user_id in round_.proposals:
+            round_.proposals.remove(user_id)
+
+        if user_id == round_.tsar_id or not round_.participants:
+            self._cancel_round()
+            return Departure(player, round_cancelled=True)
+        return Departure(player, judging_started=self._maybe_start_judging(rng))
+
+    def start(self, points: int) -> None:
+        if self.started:
+            raise GameAlreadyStartedError
+        if not MIN_POINTS <= points <= MAX_POINTS:
+            raise InvalidPointsError(MIN_POINTS, MAX_POINTS)
+        if len(self.players) < MIN_PLAYERS:
+            raise NotEnoughPlayersError(MIN_PLAYERS)
+        self.started = True
+        self.points_to_win = points
+        for player in self.players.values():
+            player.score = 0
+
+    def stop(self) -> None:
+        if not self.started:
+            raise GameNotStartedError
+        self._cancel_round()
+        self.started = False
+
+    # Rounds
+    # -------------------------------------------------------------------------
+
+    def deal(self, user_id: int, cards: Sequence[WhiteCard]) -> None:
+        self.player(user_id).hand.extend(cards)
+
+    def begin_round(self, black_card: BlackCard, rng: Random) -> Round:
+        if not self.started:
+            raise GameNotStartedError
+        if self.round is not None:
+            raise WrongPhaseError("A round is already in progress.")
+        tsar_id = self.next_tsar_id
+        if tsar_id not in self.players:
+            tsar_id = rng.choice(list(self.players))
+        self.next_tsar_id = tsar_id
+        self.used_black_cards.add(black_card.id)
+        self.round = Round(
+            black_card=black_card,
+            tsar_id=tsar_id,
+            participants=[uid for uid in self.players if uid != tsar_id],
+        )
+        return self.round
+
+    def submit_answers(self, user_id: int, choices: Sequence[int], rng: Random) -> bool:
+        """Play cards from the player's hand.
+
+        Args:
+            user_id: The answering player.
+            choices: 1-based positions of the cards in the player's hand.
+            rng: Random source used to shuffle the proposals.
 
         Returns:
-            True if the tsar has made a choice.
+            True when this was the last awaited answer and judging begins.
         """
-        tsar = await self.get_tsar()
-        if tsar.tsar_choice:
-            return True
-        return False
+        player = self.player(user_id)
+        round_ = self._round_in(Phase.ANSWERING)
+        if user_id == round_.tsar_id:
+            raise WrongPhaseError("The tsar does not answer, they judge!")
+        if user_id not in round_.participants:
+            raise WrongPhaseError("You joined during this round, wait for the next one.")
+        if user_id in round_.answers:
+            raise WrongPhaseError("You have already answered this round.")
 
-    @async_log_event
-    async def send_answers(self) -> Any:
-        """Combine player answers with the black card and send proposals.
+        pick = round_.black_card.pick
+        if len(choices) != pick:
+            raise InvalidChoiceError(f"You must pick exactly {pick} card(s).")
+        if len(set(choices)) != len(choices):
+            raise InvalidChoiceError("You cannot pick the same card twice.")
+        if not all(1 <= choice <= len(player.hand) for choice in choices):
+            raise InvalidChoiceError(f"Card numbers must be between 1 and {len(player.hand)}.")
 
-        Returns:
-            A Discord Embed with the shuffled proposals.
-        """
-        results: list[list[Any]] = []
-        black_card = await self.get_black_card()
-        players = await self.get_players()
-        for player in players:
-            if player.document_id != self.tsar_id:
-                answers: list[str] = []
-                player_answers = await player.get_answers()
-                for answer in player_answers:
-                    self._document["white_cards"].append(
-                        answer.document_id
-                    )
-                    answers.append(answer.text)
-                result = black_card.text.format(*answers)
-                results.append([player.document_id, result])
-                await player.delete_answers()
-        shuffle(results)
-        self._document["results"] = results
-        await self.save()
+        round_.answers[user_id] = [player.hand[choice - 1] for choice in choices]
+        for index in sorted(choices, reverse=True):
+            del player.hand[index - 1]
+        return self._maybe_start_judging(rng)
 
-        proposals = ""
-        for index, value in enumerate(self._document["results"]):
-            proposals += f"{index + 1}. {value[1]}\n"
-        message = create_embed(
-            {
-                "fields": {
-                    "name": "Proposals",
-                    "value": proposals.rstrip(),
-                    "inline": False,
-                }
+    def pick_winner(self, user_id: int, choice: int) -> RoundResult:
+        self.player(user_id)
+        round_ = self._round_in(Phase.JUDGING)
+        if user_id != round_.tsar_id:
+            raise WrongPhaseError("Only the tsar can pick the winner.")
+        if not 1 <= choice <= len(round_.proposals):
+            raise InvalidChoiceError(
+                f"Answer number must be between 1 and {len(round_.proposals)}."
+            )
+
+        winner_id = round_.proposals[choice - 1]
+        winner = self.players[winner_id]
+        winner.score += 1
+        for cards in round_.answers.values():
+            self.discarded_white_cards.update(card.id for card in cards)
+        # House rule kept from the original bot: the winner judges next.
+        self.next_tsar_id = winner_id
+        self.round = None
+
+        game_over = winner.score >= self.points_to_win
+        if game_over:
+            self.started = False
+        return RoundResult(
+            winner_id=winner_id,
+            black_card=round_.black_card,
+            answers=tuple(round_.answers[winner_id]),
+            game_over=game_over,
+        )
+
+    # Internals
+    # -------------------------------------------------------------------------
+
+    def _round_in(self, phase: Phase) -> Round:
+        if not self.started:
+            raise GameNotStartedError
+        if self.round is None or self.phase is not phase:
+            expected = {
+                Phase.ANSWERING: "It is not time to answer.",
+                Phase.JUDGING: "It is not time to judge.",
             }
-        )
-        return message
+            raise WrongPhaseError(expected.get(phase, "Wrong phase."))
+        return self.round
 
-    @async_log_event
-    async def wait_for_players_answers(self) -> None:
-        """Wait for all non-tsar players to vote.
+    def _maybe_start_judging(self, rng: Random) -> bool:
+        round_ = self.round
+        if round_ is None or round_.judging:
+            return False
+        if not all(uid in round_.answers for uid in round_.participants):
+            return False
+        proposals = list(round_.participants)
+        rng.shuffle(proposals)
+        round_.proposals = proposals
+        return True
 
-        Exits early if the game is stopped.
-        """
-        self.voting = "players"
-        await self.save()
-
-        await self.board.send(  # type: ignore[union-attr]
-            "Time to vote! Vote in your private channel by using `/vote`"
-        )
-
-        number_of_answers = await self.get_players_answers()
-        while number_of_answers != len(self.players_id) - 1:  # type: ignore[arg-type]
-            await sleep(_POLL_INTERVAL)
-            await self._reload()
-            if not self.playing:
-                break
-            number_of_answers = await self.get_players_answers()
-
-        self.voting = "nobody"
-        await self.save()
-
-    @async_log_event
-    async def wait_for_tsar_answer(self) -> None:
-        """Wait for the tsar to vote.
-
-        Exits early if the game is stopped.
-        """
-        self.voting = "tsar"
-        await self.save()
-
-        await self.board.send(  # type: ignore[union-attr]
-            "Time for tsar to decide! Vote in your private channel "
-            "by using `/tsar`"
-        )
-
-        tsar_answer = await self.get_tsar_answer()
-        while not tsar_answer:
-            await sleep(_POLL_INTERVAL)
-            await self._reload()
-            if not self.playing:
-                break
-            tsar_answer = await self.get_tsar_answer()
-
-        self.voting = "nobody"
-        await self.save()
-
-    @async_log_event
-    async def select_winner(self) -> None:
-        """Award a point to the winner and make them the next tsar."""
-        tsar = await self.get_tsar()
-        tsar_choice = tsar.tsar_choice
-        await tsar.delete_choice()
-
-        player_id = self._document["results"][tsar_choice - 1][0]
-        player = await Player.create(
-            self._bot, self._repo_factory, player_id
-        )
-        player.score += 1
-        await player.save()
-
-        self._document["tsar"] = player_id
-        await self.save()
-        await self.board.send(  # type: ignore[union-attr]
-            f"{player.user.mention} has won this round!"
-        )
+    def _cancel_round(self) -> None:
+        """Abort the current round, giving played cards back to their owners."""
+        if self.round is None:
+            return
+        for uid, cards in self.round.answers.items():
+            if uid in self.players:
+                self.players[uid].hand.extend(cards)
+        self.round = None

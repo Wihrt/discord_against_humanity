@@ -1,41 +1,92 @@
-# Default values for discord-against-humanity
-replicaCount: 1
+# Default values for discord-against-humanity.
+#
+# The pods comply with the "restricted" Pod Security Standard, so the chart
+# can be installed in a namespace labelled
+# `pod-security.kubernetes.io/enforce: restricted`.
+#
+# The bot always runs as a single replica: two instances sharing one token
+# would both answer every interaction.
 
 image:
   repository: ghcr.io/wihrt/discord_against_humanity
+  # Defaults to the chart appVersion.
+  tag: ""
+  # Optional immutable digest (sha256:...), takes precedence over the tag.
+  digest: ""
   pullPolicy: IfNotPresent
-  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-serviceAccount:
-  create: true
-  automount: true
-  annotations: {}
-  name: ""
-
-# -- Name of an existing Secret that contains the DISCORD_TOKEN key.
-# When set, the chart will NOT create its own token Secret and will
-# reference this one instead.
+# -- Name of an existing Secret holding the token under the DISCORD_TOKEN key.
+# When set, the chart does not create its own Secret.
 existingSecret: ""
-
-# -- Discord bot token (only used when existingSecret is empty).
-# Prefer using existingSecret for production deployments.
+# -- Discord bot token, only used when existingSecret is empty.
 discordToken: ""
 
 valkey:
-  host: "valkey"
-  port: "6379"
+  host: valkey
+  port: 6379
+  db: 0
+  # -- Optional Secret holding the Valkey password.
+  passwordSecret:
+    name: ""
+    key: password
+
+logLevel: INFO
+
+# -- Load the card catalog with a Job after each install/upgrade.
+# The job is a no-op when the catalog already holds cards.
+seed:
+  enabled: true
+  # -- Path or URL of a JSON Against Humanity export (empty: full public catalog).
+  source: ""
+  officialOnly: false
+  backoffLimit: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+serviceAccount:
+  create: true
+  # The bot does not talk to the Kubernetes API.
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 resources:
-  limits:
-    cpu: 200m
-    memory: 256Mi
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    memory: 256Mi
 
 nodeSelector: {}
 tolerations: []

@@ -1,0 +1,86 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+# Onboarding: `mise install && mise run setup`, then `mise tasks` to list tasks.
+min_version = "2026.10.0"
+
+[tools]
+python = "3.14"
+uv = "0.13.6"
+prek = "0.5.7"
+helm = "4.3.1"
+
+[env]
+# Load DISCORD_TOKEN & co. from an optional, git-ignored .env file.
+_.file = { path = ".env", redact = true }
+
+# ---- Onboarding -------------------------------------------------------------
+
+[tasks.setup]
+description = "Install dependencies and git hooks"
+run = ["uv sync --locked", "prek install --install-hooks"]
+
+[tasks.update]
+description = "Upgrade the lockfile and the git hooks"
+run = ["uv lock --upgrade", "prek auto-update"]
+
+# ---- Quality gates ----------------------------------------------------------
+
+[tasks.lint]
+description = "Lint and check formatting with Ruff"
+run = ["uv run ruff check", "uv run ruff format --check"]
+
+[tasks.format]
+description = "Fix lint issues and format with Ruff"
+run = ["uv run ruff check --fix", "uv run ruff format"]
+
+[tasks.typecheck]
+description = "Type-check with ty"
+run = "uv run ty check"
+
+[tasks.arch]
+description = "Check the hexagonal layer contracts with import-linter"
+run = "uv run lint-imports"
+
+[tasks.test]
+description = "Run unit tests"
+run = "uv run pytest -m 'not integration'"
+
+[tasks."test:integration"]
+description = "Run integration tests (needs Docker)"
+run = "uv run pytest -m integration"
+
+[tasks."test:cov"]
+description = "Run every test with a coverage report"
+run = "uv run pytest --cov --cov-report=term-missing"
+
+[tasks."helm:lint"]
+description = "Lint and render the Helm chart"
+run = [
+  "helm lint --strict helm/discord-against-humanity",
+  "helm template ci helm/discord-against-humanity --set seed.enabled=true > /dev/null",
+]
+
+[tasks.check]
+description = "Run every gate, like the CI does"
+run = ["prek run --all-files --stage pre-commit", "prek run --all-files --stage pre-push"]
+
+# ---- Run --------------------------------------------------------------------
+
+[tasks.run]
+description = "Run the bot locally (needs DISCORD_TOKEN and a Valkey server)"
+run = "uv run discord-against-humanity run"
+
+[tasks.seed]
+description = "Load the card catalog into Valkey (extra args are passed through)"
+run = "uv run discord-against-humanity seed"
+
+[tasks."docker:build"]
+description = "Build the container image"
+run = "docker build -t discord-against-humanity:dev ."
+
+[tasks."compose:up"]
+description = "Start Valkey, seed it and run the bot with Docker Compose"
+run = "docker compose up -d --build"
+
+[tasks."compose:down"]
+description = "Stop the Docker Compose stack"
+run = "docker compose down"
