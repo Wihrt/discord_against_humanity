@@ -87,6 +87,7 @@ async def test_round_started_reaches_every_player() -> None:
     board = client.channels[game.board_id].sent
     assert "<@1>" in (board[0][0] or "")
     assert "tsar" in (client.channels[101].sent[0][0] or "")
-    assert "/vote" in (client.channels[102].sent[0][0] or "")
+    assert "first blank" in (client.channels[102].sent[0][0] or "")
+    assert client.channels[102].sent[0][1]["view"] is not None
     assert len(client.channels[102].sent[0][1]["embeds"]) == 2
     assert "next one" in (client.channels[109].sent[0][0] or "")

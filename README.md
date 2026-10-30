@@ -17,8 +17,8 @@ A Discord bot to play **Cards Against Humanity** with your friends, right inside
 | `/create` | anyone | Creates the game: a category and a `#board` channel |
 | `/join` | anyone | Joins the game and opens your private channel |
 | `/start [points]` | player | Starts the game (first to `points`, default 5, wins) |
-| `/vote answers:<n…>` | player | Plays card(s) from your hand, e.g. `/vote answers:3` or `/vote answers:2 5` |
-| `/tsar answer:<n>` | tsar | Picks the winning answer |
+| `/vote answers:<n…>` | player | Plays card(s) without the buttons, e.g. `/vote answers:2 5` |
+| `/tsar answer:<n>` | tsar | Picks the winning answer without the buttons |
 | `/hand` | player | Shows your cards |
 | `/score` | anyone | Shows the scoreboard |
 | `/stop` | anyone | Stops the current game (back to the lobby) |
@@ -26,10 +26,16 @@ A Discord bot to play **Cards Against Humanity** with your friends, right inside
 | `/delete` | anyone | Deletes the game and its channels |
 | `/reminder` | anyone | Shows the rules |
 
-Each round a black card is drawn and everyone but the **tsar** answers. Once all answers are in,
-they are revealed anonymously and the tsar picks the best one. The winner scores a point and
+Each round a black card is drawn and everyone but the **tsar** answers by **clicking cards** under
+their hand, in their private channel. Click order is answer order: the first card fills the first
+blank, the second card the second blank. A preview of the sentence is updated on each click, then
+**Play** submits it. Once all answers are in, they are revealed anonymously and the tsar selects
+the best one with the buttons, then presses **Crown this answer**. The winner scores a point and
 becomes the next tsar. Players may join or leave at any time: late joiners play from the next
 round, and if the tsar leaves the round is replayed.
+
+Buttons carry their whole state in their custom IDs (round, cards picked so far): they keep working
+across bot restarts and need no storage.
 
 The bot needs the **Manage Channels** permission, plus **View Channels** and **Send Messages**.
 Invite it with the `bot` and `applications.commands` scopes.

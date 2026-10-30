@@ -5,7 +5,7 @@ from typing import Any
 
 import discord
 
-from discord_against_humanity.adapters.discord import messages
+from discord_against_humanity.adapters.discord import messages, views
 from discord_against_humanity.domain.game import Game, RoundResult
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class DiscordNotifier:
     async def round_started(self, game: Game) -> None:
         round_ = game.round
         assert round_ is not None
-        question = messages.question_embed(game)
+        question = messages.question_embed(round_)
         await self._send(
             game.board_id,
             f"{messages.mention(round_.tsar_id)} is the tsar for this round.",
@@ -63,14 +63,16 @@ class DiscordNotifier:
                 await self._send(
                     player.channel_id,
                     "You are the **tsar** this round: wait for the answers, "
-                    "then pick the best one with `/tsar`.",
+                    "then pick the best one.",
                     embed=question,
                 )
             elif player.user_id in round_.participants:
                 await self._send(
                     player.channel_id,
-                    f"Pick {round_.black_card.pick} card(s) with `/vote`.",
-                    embeds=[question, messages.hand_embed(player.hand)],
+                    f"Click {round_.black_card.pick} card(s), in order: the first one "
+                    "fills the first blank. Then press **Play**.",
+                    embeds=messages.play_embeds(round_, player.hand, []),
+                    view=views.hand_view(round_, player.hand, []),
                 )
             else:
                 await self._send(
@@ -95,7 +97,12 @@ class DiscordNotifier:
             f"All answers are in! {messages.mention(tsar.user_id)}, pick the winner.",
             embed=proposals,
         )
-        await self._send(tsar.channel_id, "Pick the winning answer with `/tsar`.", embed=proposals)
+        await self._send(
+            tsar.channel_id,
+            "Select the winning answer, then press **Crown this answer**.",
+            embed=proposals,
+            view=views.judge_view(game.round),
+        )
 
     async def round_cancelled(self, game: Game, reason: str) -> None:
         await self._send(game.board_id, f"Round cancelled: {reason}")
