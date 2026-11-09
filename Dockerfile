@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
-FROM python:3.14-slim-trixie@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS builder
+FROM python:3.14-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS builder
 
 COPY --from=uv /uv /usr/local/bin/uv
 
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Runtime: no uv, no sources, unprivileged, compatible with a read-only root
 # filesystem and the Kubernetes "restricted" Pod Security Standard.
 # ---------------------------------------------------------------------------
-FROM python:3.14-slim-trixie@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS runtime
+FROM python:3.14-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS runtime
 
 # Owned by root and read-only for the bot user: the code cannot be altered.
 COPY --from=builder /app/.venv /app/.venv
