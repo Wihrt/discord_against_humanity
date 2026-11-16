@@ -6,7 +6,7 @@ min_version = "2026.10.0"
 python = "3.15.2"
 uv = "0.13.7"
 prek = "0.5.10"
-helm = "4.3.1"
+helm = "4.3.2"
 
 [env]
 # Load DISCORD_TOKEN & co. from an optional, git-ignored .env file.
