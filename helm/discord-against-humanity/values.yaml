@@ -10,7 +10,7 @@
 image:
   repository: ghcr.io/wihrt/discord_against_humanity
   # Defaults to the chart appVersion.
-  tag: "@sha256:9facce6a8c473a070d6447ee95e70e972a9eac0153da7882fc421e564ac59bc3"
+  tag: "@sha256:9af2e615f21fdbfd3d7fd7a601c569920e0cb7d5e75ab09a511d390d2cec712f"
   # Optional immutable digest (sha256:...), takes precedence over the tag.
   digest: ""
   pullPolicy: IfNotPresent
